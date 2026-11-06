@@ -206,6 +206,60 @@ class ResearchUiTests(unittest.TestCase):
             self.assertEqual(before,json.dumps(report,ensure_ascii=False,sort_keys=True))
         self.assertEqual(data_warnings_panel([]),'')
 
+    def test_dividend_cash_html_distinguishes_verified_shares_proxy_unknown_and_zero(self):
+        verified={'end_date':'20251231','record_date':'20260615','ex_date':'20260616','cash_div_tax':'0.2',
+                  'ordinary_cash_div_tax':'0.15','shares':'1000000000','basis':'verified_distribution_shares',
+                  'share_period':None,'source':'https://example.com/dividend?a=1&b=2','available_on':'20260610',
+                  'estimated_dividend_cash':'200000000','estimated_ordinary_cash':'150000000'}
+        proxy={**verified,'end_date':'20250630','record_date':'20250810','ex_date':'20250811',
+               'cash_div_tax':'0.3','ordinary_cash_div_tax':'0.3','shares':'100000000','basis':'year_end_proxy',
+               'share_period':'20241231','source':None,'available_on':'20250401',
+               'estimated_dividend_cash':'30000000','estimated_ordinary_cash':'30000000'}
+        unknown={**proxy,'end_date':'20241231','shares':None,'source':'javascript:alert(1)',
+                 'available_on':'<script>日期</script>','estimated_dividend_cash':None,'estimated_ordinary_cash':None}
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace=Path(tmp);cfg=load_config();create_demo(workspace,cfg)
+            report=json.loads((workspace/'screen.json').read_text(encoding='utf-8'))
+            annual=report['rows'][0]['annual']
+            annual[0].update(estimated_dividend_cash='230000000',estimated_ordinary_cash='180000000',dividend_cash_basis=[verified,proxy])
+            annual[1].update(estimated_dividend_cash=None,estimated_ordinary_cash=None,dividend_cash_basis=[verified,unknown])
+            annual[2].update(estimated_dividend_cash='0',estimated_ordinary_cash='0',dividend_cash_basis=[])
+            before=json.dumps(report,ensure_ascii=False,sort_keys=True)
+            ledger=Ledger(workspace/'ledger.sqlite3',cfg)
+            try:
+                page=render(workspace,ledger,report).read_text(encoding='utf-8')
+            finally:
+                ledger.close()
+            self.assertEqual(page.count('class="dividend-cash"'),1)
+            self.assertIn('2025</td><td>230,000,000.00</td><td>180,000,000.00',page)
+            self.assertIn('2024</td><td>—</td><td>—',page)
+            self.assertIn('2023</td><td>0.00</td><td>0.00',page)
+            self.assertIn('2022</td><td>—</td><td>—',page)
+            self.assertIn('已核实派息股数</strong> · 1,000,000,000 股',page)
+            self.assertIn('年报期末股数代理（未核实派息股数）</strong> · 100,000,000 股 · 代理年报期 20241231',page)
+            self.assertIn('依据可用日 20260610',page)
+            self.assertIn('登记日 20260615 · 除息日 20260616',page)
+            self.assertIn('href="https://example.com/dividend?a=1&amp;b=2"',page)
+            self.assertIn('本笔公司金额 200,000,000.00 元 / 剔除已知特别后 150,000,000.00 元',page)
+            self.assertIn('股数核实不代表普通派息可持续',page)
+            self.assertIn('登记日实际持股 × 每股派息',page)
+            self.assertIn('缺失时不以已知部分代替全年总额',page)
+            self.assertNotIn('href="javascript:',page)
+            self.assertNotIn('<script>日期</script>',page)
+            self.assertIn('&lt;script&gt;日期&lt;/script&gt;',page)
+            self.assertIn('id="market-chart-data"',page)
+            self.assertEqual(before,json.dumps(report,ensure_ascii=False,sort_keys=True))
+
+    def test_legacy_summary_html_does_not_invent_company_cash_or_share_verification(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace=Path(tmp);cfg=load_config()
+            page=create_demo(workspace,cfg).read_text(encoding='utf-8')
+            self.assertIn('旧摘要未记录公司派息总额与逐事件股本依据，未从 DPS 回推金额',page)
+            self.assertNotIn('class="dividend-cash"',page)
+            self.assertNotIn('已核实派息股数',page)
+            self.assertIn('已实施 DPS / 元',page)
+            self.assertIn('id="market-chart-data"',page)
+
     def test_historical_unused_share_conflicts_preserve_counts_scope_and_unverified_status(self):
         backtest={'diagnostics':{'evaluations':80,'unused_share_conflicts':[
             {'symbol':'600001.SH','period':'20220930','field':'total_share','count':12,'active_count':9},

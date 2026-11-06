@@ -14,7 +14,7 @@ from qmt.research import summarize
 from qmt.report import chart_panel
 
 
-def fixture(day='20261105',symbol='600001.SH',price='8'):
+def fixture(day='20261105',symbol='600001.SH',price='8',cash_div='.6'):
     data={key:[] for key in ('income','fina_indicator','cashflow','balancesheet','fina_audit','dividend')}
     def period(end,ann,profit,deducted):
         common={'ts_code':symbol,'end_date':end,'ann_date':ann,'report_type':'1'}
@@ -26,7 +26,7 @@ def fixture(day='20261105',symbol='600001.SH',price='8'):
         period(f'{year}1231',f'{year+1}0401',1000,900)
         data['fina_audit'].append({'end_date':f'{year}1231','ann_date':f'{year+1}0401','audit_result':'标准无保留意见'})
         data['dividend'].append({'end_date':f'{year}1231','ann_date':f'{year+1}0401','imp_ann_date':f'{year+1}0501',
-            'div_proc':'实施','record_date':f'{year+1}0510','ex_date':f'{year+1}0511','pay_date':f'{year+1}0512','cash_div_tax':'.6','stk_div':0})
+            'div_proc':'实施','record_date':f'{year+1}0510','ex_date':f'{year+1}0511','pay_date':f'{year+1}0512','cash_div_tax':cash_div,'stk_div':0})
     period('20250930','20251030',750,675)
     period('20260930','20261030',750,675)
     dossier={'symbol':symbol,'as_of':day,'data':data,'errors':{}}

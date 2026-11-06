@@ -135,3 +135,11 @@ MSCI AC Asia Pacific Select High Dividend Index（2025年3月）先做资格筛�
 
 - MSCI：PDF第4—6页，https://www.msci.com/documents/10199/d3c18b79-655d-8476-de7e-9d8bce27f418
 - S&P Dow Jones：印刷第30页（PDF第31页），https://www.spglobal.com/spdji/en/documents/methodologies/methodology-dj-dividend-indices.pdf
+
+
+## v17 重组后的联合派息基数核验（2026-11-07）
+
+- [中交设计2024-031权益分派实施公告](https://static.cninfo.com.cn/finalpage/2024-06-04/1220246448.PDF)第1—2页：2022与2023年度合计每股税前0.3674元；2024-06-12登记、06-13除息及付款，分派基数2,061,708,481股，无差异化分红。PDF SHA256：`dcc50f953cdd16cd763444f0ac60c62b2b7bc48a98edef17110510d23a2cafb8`。
+- [2024-018，2022年度利润分配方案](https://static.cninfo.com.cn/finalpage/2024-03-27/1219413684.PDF)第1—2页：重组致2022年度分红延期，每股0.1104元向全部股东分派；[2024-019，2023年度方案](https://static.cninfo.com.cn/finalpage/2024-03-27/1219413687.PDF)第1页每股0.2570元，两项均列同一分派股数。对应PDF SHA256分别为`2b2915f5b33917bba2324d43d5fa89bda3ba2e1046c999c0eb43a711624d5256`和`24a9ba410bc6ba006929e36b3befd706f696dc485acf4e28c294a7c50adc59a5`。
+- 2022年末资产负债表股数776,290,282与实际分派基数不同，不能直接用旧年末股数乘0.1104估计2022年度现金支出。保留三条接口原行，只形成两项财政归属、一次个人现金事件；原行顺序不影响规范化结果。原行集合SHA256：`f548885ccfab4ad8585cde0c317eebf2c1c6a90b66cd1a2e05e0f951c9774d23`（先按财政期、完整行JSON排序）。
+- 计算公司支出时保留DPS乘已核实股数的Decimal精度，并标为估计金额；公告总额展示位数不同，不擅自宣称分币级清算一致。所有新依据从2024-06-04可用，不能回填过去；该事实修正不验证未来分红政策，也不放宽财务与估值门槛。

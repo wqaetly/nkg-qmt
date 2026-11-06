@@ -101,17 +101,34 @@ def normalize_cash_joint_periods(rows, as_of):
                and max(r.get('ann_date') or '99999999',r.get('imp_ann_date') or '99999999')<=as_of]
         if not event or (len(event)==1 and event[0].get('event_kind')=='cash_joint_periods'):
             continue
-        originals=sorted((dict(r) for r in event),key=lambda r:str(r.get('end_date') or ''))
-        if originals!=sorted(expected,key=lambda r:r['end_date']):
+        order=lambda r:(str(r.get('end_date') or ''),json.dumps(r,sort_keys=True))
+        originals=sorted((dict(r) for r in event),key=order)
+        if originals!=sorted(expected,key=order):
             raise AppError('联合派息原始记录不完整或与已核实公告不一致。')
+        components=[dict(c) for c in correction.get('fiscal_components',[
+            {'end_date':r['end_date'],'cash_div_tax':str(dec(r['cash_div_tax']))} for r in originals])]
+        periods=[date_key(c['end_date']) for c in components]
+        if not components or len(set(periods))!=len(periods) or set(periods)!={r['end_date'] for r in originals}:
+            raise AppError('联合派息财政组成项缺失或重复。')
+        for component in components:
+            if 'special_cash_div_tax' in component and 'ordinary_cash_div_tax' not in component:
+                raise AppError('已核实特别派息组成项须明确普通部分，不能自行推定分类。')
+            cash,_=_dividend_amounts(component)
+            if {dec(r['cash_div_tax']) for r in originals if r['end_date']==component['end_date']}!={cash}:
+                raise AppError('联合派息财政组成项与原始金额不一致。')
+            if 'distribution_shares' in component:
+                _distribution_shares(component['distribution_shares'])
         # Keep one cash payment, but never attribute the combined amount to one fiscal period.
         normalized={**originals[-1],'event_kind':'cash_joint_periods',
-                    'cash_div_tax':str(sum((dec(r['cash_div_tax']) for r in originals),Decimal(0))),
-                    'fiscal_components':[{'end_date':r['end_date'],'cash_div_tax':str(dec(r['cash_div_tax']))} for r in originals],
+                    'cash_div_tax':str(sum((dec(c['cash_div_tax']) for c in components),Decimal(0))),
+                    'fiscal_components':components,
                     'correction_source':correction['source'],'correction_source_pages':correction['pages'],
                     'correction_available_on':correction['available_on'],'correction_note':correction['note'],
                     'correction_originals':originals,
                     'correction_fingerprint':hashlib.sha256(json.dumps(originals,sort_keys=True).encode()).hexdigest()}
+        for key in ('source_sha256','component_sources'):
+            if key in correction:
+                normalized['correction_'+key]=json.loads(json.dumps(correction[key]))
         rows=[r for r in rows if r not in event]+[normalized]
     return rows
 
@@ -149,6 +166,8 @@ def implemented_dividends(rows, as_of, earliest_period=None):
         published = max(row.get("ann_date") or "99999999", row.get("imp_ann_date") or "99999999")
         if published > as_of:
             continue
+        if 'distribution_shares' in row:
+            raise AppError('派息股数只能来自已核实的财政组成项，不能信任原始事件夹带的股数。')
         for field in ("record_date", "ex_date", "end_date"):
             date_key(row.get(field))
         if row.get('event_kind')=='cash_joint_periods' or 'fiscal_components' in row:
@@ -196,6 +215,86 @@ def signed(value):
         raise AppError('财务关键字段不是有效数字。') from None
     if not result.is_finite():
         raise AppError("财务字段不是有限数。")
+    return result
+
+
+def _distribution_shares(value):
+    shares=dec(value,positive=True)
+    if shares!=shares.to_integral_value():
+        raise AppError('已核实派息股数必须为正整数。')
+    return shares
+
+
+def _dividend_amounts(component):
+    cash=dec(component['cash_div_tax'])
+    ordinary=dec(component.get('ordinary_cash_div_tax',component['cash_div_tax']))
+    special=dec(component['special_cash_div_tax']) if 'special_cash_div_tax' in component and 'ordinary_cash_div_tax' in component else None
+    if ordinary<0 or ordinary>cash or (special is not None and ordinary+special!=cash):
+        raise AppError('普通、特别与合计每股分红金额不一致。')
+    return cash,ordinary
+
+
+def annual_dividend_cash(events, balances, earliest_period=None):
+    """Aggregate validated events into fiscal-year estimates, retaining every component's basis.
+
+    Amounts are unrounded yuan, shares are individual shares. Unknown proxy shares make
+    the entire year's cash estimate unknown; all component evidence remains visible.
+    """
+    earliest_period=date_key(earliest_period) if earliest_period is not None else '19000101'
+    years={}
+    for event in events:
+        if 'distribution_shares' in event:
+            raise AppError('未核实的事件级派息股数不能用于估算。')
+        if event.get('event_kind')=='cash_joint_periods' or 'fiscal_components' in event:
+            originals=event.get('correction_originals',[])
+            available=event.get('correction_available_on')
+            if not originals or not available or normalize_cash_joint_periods(originals,date_key(available))!=[event]:
+                raise AppError('联合派息组成项或股数依据未通过原文登记校验。')
+            components=event['fiscal_components']
+        else:
+            components=[event]
+        for component in components:
+            end_date=date_key(component['end_date'])
+            if end_date<earliest_period:
+                continue
+            period=end_date[:4]+'1231'
+            cash,ordinary=_dividend_amounts(component)
+            verified='distribution_shares' in component
+            balance=balances.get(period,{})
+            if verified:
+                shares=_distribution_shares(component['distribution_shares'])
+            else:
+                try:shares=dec(balance.get('total_share'),positive=True)
+                except AppError:shares=None
+            basis={'end_date':end_date,'record_date':event['record_date'],'ex_date':event['ex_date'],
+                   'cash_div_tax':str(cash),'ordinary_cash_div_tax':str(ordinary),
+                   'shares':str(shares) if shares is not None else None,
+                   'basis':'verified_distribution_shares' if verified else 'year_end_proxy',
+                   'share_period':None if verified else period,
+                   'source':event['correction_source'] if verified else None,
+                   'available_on':event['correction_available_on'] if verified else
+                                  disclosed_date(balance) if balance and disclosed_date(balance)!='99999999' else None,
+                   'estimated_dividend_cash':str(cash*shares) if shares is not None else None,
+                   'estimated_ordinary_cash':str(ordinary*shares) if shares is not None else None}
+            years.setdefault(period,[]).append(basis)
+    result={}
+    for period,bases in sorted(years.items()):
+        total_dps=sum((dec(b['cash_div_tax']) for b in bases),Decimal(0))
+        ordinary_dps=sum((dec(b['ordinary_cash_div_tax']) for b in bases),Decimal(0))
+        total_cash=ordinary_cash=None
+        if all(b['shares'] is not None for b in bases):
+            proxy=[b for b in bases if b['basis']=='year_end_proxy']
+            verified=[b for b in bases if b['basis']=='verified_distribution_shares']
+            # Preserve the original Decimal operation order for companies using only year-end proxies.
+            proxy_shares=dec(proxy[0]['shares']) if proxy else Decimal(0)
+            total_cash=sum((dec(b['cash_div_tax']) for b in proxy),Decimal(0))*proxy_shares
+            ordinary_cash=sum((dec(b['ordinary_cash_div_tax']) for b in proxy),Decimal(0))*proxy_shares
+            total_cash+=sum((dec(b['estimated_dividend_cash']) for b in verified),Decimal(0))
+            ordinary_cash+=sum((dec(b['estimated_ordinary_cash']) for b in verified),Decimal(0))
+        result[period]={'implemented_dps':str(total_dps),'ordinary_dps':str(ordinary_dps),
+                        'estimated_dividend_cash':str(total_cash) if total_cash is not None else None,
+                        'estimated_ordinary_cash':str(ordinary_cash) if ordinary_cash is not None else None,
+                        'dividend_cash_basis':bases}
     return result
 
 
@@ -248,16 +347,8 @@ def summarize(dossier, basic, quote):
         annual = sorted((p for p in inc if p.endswith("1231")), reverse=True)[:8]
         if len(annual) < 5:
             row["issues"].append("完整年度利润记录不足 5 年")
-        dividend_years, ordinary_years = {},{}
-        for event in events:
-            components=event['fiscal_components'] if event.get('event_kind')=='cash_joint_periods' else [event]
-            for component in components:
-                if component['end_date']<f"{int(as_of[:4])-8}0101":
-                    continue
-                year = component["end_date"][:4]
-                dividend_years[year] = dividend_years.get(year, Decimal(0)) + dec(component["cash_div_tax"])
-                # shortcut: unclassified payouts remain a proxy; company-policy research must verify them.
-                ordinary_years[year] = ordinary_years.get(year,Decimal(0))+dec(component.get('ordinary_cash_div_tax',component['cash_div_tax']))
+        # shortcut: unclassified payouts remain ordinary proxies; verified shares do not verify sustainability.
+        dividend_years=annual_dividend_cash(events,bs,f"{int(as_of[:4])-8}0101")
         for period in annual:
             profit = signed(inc[period].get("n_income_attr_p"))
             cash = cf.get(period, {}).get("n_cashflow_act")
@@ -265,8 +356,8 @@ def summarize(dossier, basic, quote):
             free = None if cash is None or capex is None or row["financial_company"] else str(signed(cash) - signed(capex))
             item = {"period": period, "profit": str(profit), "deducted_profit": ind.get(period, {}).get("profit_dedt"),
                     "operating_cash": cash, "capex": capex, "simple_fcf": free,
-                    "implemented_dps": str(dividend_years[period[:4]]) if period[:4] in dividend_years else None,
-                    "ordinary_dps": str(ordinary_years[period[:4]]) if period[:4] in ordinary_years else None,
+                    **dividend_years.get(period,{'implemented_dps':None,'ordinary_dps':None,
+                        'estimated_dividend_cash':None,'estimated_ordinary_cash':None,'dividend_cash_basis':[]}),
                     "audit": audit.get(period, {}).get("audit_result"),
                     "ann_date": disclosed_date(inc[period])}
             row["annual"].append(item)

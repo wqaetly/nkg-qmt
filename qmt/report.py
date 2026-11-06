@@ -127,6 +127,29 @@ def data_warnings_panel(warnings):
     <p class="muted">该季度股数字段未参与本次数值计算；这里只记录接口差异，尚未核对原文。年报股数及其他字段冲突仍按阻断处理。</p></div>'''
 
 
+def dividend_cash_panel(annual):
+    if not annual:
+        return ''
+    if not any(any(key in year for key in ('estimated_dividend_cash','estimated_ordinary_cash','dividend_cash_basis')) for year in annual):
+        return '<p class="muted dividend-cash-legacy">旧摘要未记录公司派息总额与逐事件股本依据，未从 DPS 回推金额；需重新生成研究摘要。</p>'
+    totals=table(['年度','估算公司派息总额 / 元','剔除已知特别后的估算额 / 元'],[
+        [year['period'][:4],number(year.get('estimated_dividend_cash')),number(year.get('estimated_ordinary_cash'))] for year in annual])
+    details=[]
+    for year in annual:
+        events=[]
+        for item in year.get('dividend_cash_basis',[]):
+            basis={'verified_distribution_shares':'已核实派息股数','year_end_proxy':'年报期末股数代理（未核实派息股数）'}.get(item.get('basis'),'股本口径未记录')
+            source=safe_url(item.get('source'))
+            link=f'<a href="{esc(source)}" target="_blank" rel="noreferrer">股本依据原文</a>' if source else '来源链接未记录'
+            share_period=f" · 代理年报期 {esc(item.get('share_period'))}" if item.get('basis')=='year_end_proxy' else ''
+            events.append(f'''<li><strong>{esc(basis)}</strong> · {number(item.get('shares'),0)} 股{share_period} · 依据可用日 {esc(item.get('available_on'))} · {link}
+            <p>归属期 {esc(item.get('end_date'))} · 登记日 {esc(item.get('record_date'))} · 除息日 {esc(item.get('ex_date'))}<br>
+            每股派息 {esc(item.get('cash_div_tax'))} 元 / 剔除已知特别后 {esc(item.get('ordinary_cash_div_tax'))} 元；本笔公司金额 {number(item.get('estimated_dividend_cash'))} 元 / 剔除已知特别后 {number(item.get('estimated_ordinary_cash'))} 元。</p></li>''')
+        details.append(f'<details><summary>{esc(year["period"][:4])} 年逐事件股本依据</summary>'+('<ul>'+''.join(events)+'</ul>' if events else '<p class="muted">未记录逐事件股本依据。</p>')+'</details>')
+    return f'''<details class="dividend-cash"><summary>公司派息总额与股本依据</summary>{totals}
+    <p class="muted">金额直接采用逐事件汇总；“—”表示未知或旧摘要未记录，不等于零，缺失时不以已知部分代替全年总额。股数核实不代表普通派息可持续；年报期末股数只是代理。个人税前应收仍按登记日实际持股 × 每股派息计算，不按公司总股本计算。</p>{''.join(details)}</details>'''
+
+
 def research_panel(research, backtest, chart_symbols=(), history=''):
     if not research and not backtest and not history:
         return ''
@@ -364,7 +387,7 @@ def render(workspace, ledger, report, status=None):
         <span class="pill {'danger' if state=='排除' else 'ready' if state=='可进一步评估' else ''}">{esc(state)}</span><span class="expand">＋</span></summary>
         <div class="detail-body"><button type="button" class="chart-link" data-chart-symbol="{esc(row['symbol'])}">查看 K 线与模拟操作</button><h3>三项筛选 · {esc(assessment.get('state','尚未模拟评估'))}</h3>{gates}<p>{esc(lot_note)}</p><div class="detail-grid"><section><h3>核查结论</h3><ul>{issues}</ul>{data_warnings_panel(row.get('data_warnings',[]))}<p class="muted">最新报告期 {esc(row.get('latest_period'))} · 取数截至 {esc(row.get('as_of'))}</p></section>
         <section><h3>下一步</h3><p>{esc(row.get('review_note','补充原始公告与情景假设后再评估。'))}</p><p class="muted">研究确认有效期由配置控制；新披露或股本变化将使旧确认失效。不会因价格下跌自动加仓。</p></section></div>
-        <h3>近年分红与支付能力</h3>{annual}{corrections}<p class="muted">金额按原始披露口径；同年度中期与年度派息合计，不含未实施预案。只剔除有原文依据的已知特别分红，其余记录仍需核实。DPS 未统一历史股本口径，不能直接比较增速；空白不是零。金融企业不计算工业 FCF。</p>
+        <h3>近年分红与支付能力</h3>{annual}{dividend_cash_panel(row.get('annual',[]))}{corrections}<p class="muted">财务金额按原始披露口径，派息总额估算另列股本依据；同年度中期与年度派息合计，不含未实施预案。只剔除有原文依据的已知特别分红，其余记录仍需核实。DPS 未统一历史股本口径，不能直接比较增速；空白不是零。金融企业不计算工业 FCF。</p>
         <h3>三种情景 × 股息率参考价</h3>{matrix}
         <details class="research"><summary>联网线索与 AI 研究草稿</summary><p class="muted">{esc(context.get('fetched_at','尚未运行'))} · 搜索摘要未代替原文核查；AI 不改变计划和账本。</p>{analysis}<ul>{warnings}</ul><ol class="sources">{sources}</ol></details></div></details>''')
     accounts = []

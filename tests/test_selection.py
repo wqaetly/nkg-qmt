@@ -76,14 +76,13 @@ class SelectionTests(unittest.TestCase):
         self.assertEqual(assess(row,dossier,self.rules)['state'],'待数据核实')
 
     def test_high_payout_and_debt_require_research_not_company_rejection(self):
-        row,dossier=fixture();row['annual'][0]['ordinary_dps']='1.2'
+        row,dossier=fixture(cash_div='1.2')
         self.assertEqual(assess(row,dossier,self.rules)['state'],'待数据核实')
         row,dossier=fixture();dossier['data']['balancesheet'][-1]['st_borr']=10000
         self.assertIn('金融资产',assess(row,dossier,self.rules)['reason'])
 
     def test_payout_above_old_seventy_percent_cap_is_not_truncated(self):
-        row,dossier=fixture()
-        for a in row['annual']:a.update(implemented_dps='.8',ordinary_dps='.8')
+        row,dossier=fixture(cash_div='.8')
         self.assertEqual(Decimal(assess(row,dossier,self.rules)['payout']),Decimal('.8'))
 
     def test_watch_names_dont_force_orders_and_old_ledger_path_is_preserved(self):

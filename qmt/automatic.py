@@ -8,7 +8,7 @@ from statistics import median
 from .config import AppError, atomic_json, dec, date_key, now_cn
 from .ledger import Ledger
 from .market import Tushare
-from .research import statements, signed
+from .research import statements, signed, implemented_dividends, annual_dividend_cash
 from .service import read_json, update_ledger
 from .selection import load_rules, automatic_path
 from vendor.dividend_stock_research.dividend_price import calculate
@@ -44,9 +44,19 @@ def dividend_assessment(row, dossier, rules):
             return stop('排除','近五年存在非正归母或扣非利润')
         if any(a['audit'] != '标准无保留意见' for a in annual):
             return stop('待数据核实','近五年审计意见未全部取得标准无保留意见')
-        # Year-end shares are an explicit proxy, not actual dividend registration shares.
-        dividends = [dec(a['implemented_dps'],positive=True)*dec(balance[a['period']]['total_share'],positive=True) for a in annual[:3]]
-        payout = [dec(a.get('ordinary_dps',a['implemented_dps']),positive=True)*dec(balance[a['period']]['total_share'],positive=True)/dec(a['profit'],positive=True) for a in annual[:3]]
+        estimates=annual_dividend_cash(implemented_dividends(data['dividend'],day),balance,f'{int(day[:4])-8}0101')
+        for item in annual:
+            fresh=estimates.get(item['period'],{})
+            if fresh.get('implemented_dps') is None or dec(fresh['implemented_dps'])<=0:
+                return stop('待数据核实','近五年已实施正现金分红数据不齐或非正，须重新研究')
+            for key in ('implemented_dps','ordinary_dps','estimated_dividend_cash','estimated_ordinary_cash'):
+                if key not in item:
+                    continue  # Old summaries may omit derived fields; calculations still use fresh evidence.
+                expected=fresh.get(key)
+                if (item[key] is None)!=(expected is None) or (expected is not None and dec(item[key])!=dec(expected)):
+                    return stop('待数据核实','分红摘要与当时可用原始事件或股数依据不一致，须重新研究')
+        dividends = [dec(estimates[a['period']]['estimated_dividend_cash'],positive=True) for a in annual[:3]]
+        payout = [dec(estimates[a['period']]['estimated_ordinary_cash'],positive=True)/dec(a['profit'],positive=True) for a in annual[:3]]
         if max(payout)>1:
             return stop('待数据核实','近三年估算派息超过对应归母利润；须核查特别分红、留存收益和持续政策，不能直接视为不合格公司')
         fcf = sum(signed(a['simple_fcf']) for a in annual[:3])
