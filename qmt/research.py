@@ -35,9 +35,30 @@ def statements(rows, as_of):
     return selected
 
 
+def normalize_disclosed_dividends(rows, as_of):
+    """One verified provider overlap; unknown conflicts still fail closed."""
+    if as_of<'20230707':
+        return rows
+    event=[r for r in rows if r.get('ts_code')=='600600.SH' and r.get('record_date')=='20230713' and r.get('div_proc')=='实施']
+    if not event:
+        return rows
+    expected={('20221231','20230617',Decimal('1.8')),('20230323','20230323',Decimal('.5'))}
+    signatures={(r.get('end_date'),r.get('ann_date'),dec(r.get('cash_div_tax'))) for r in event}
+    if (len(event) not in (1,2) or len(signatures)!=len(event) or not signatures<=expected
+            or ('20221231','20230617',Decimal('1.8')) not in signatures or any(r.get('ex_date')!='20230714' or r.get('pay_date')!='20230714'
+            or r.get('imp_ann_date')!='20230707' or dec(r.get('stk_div'))!=0 for r in event)):
+        return rows
+    total=next(r for r in event if r['end_date']=='20221231')
+    normalized={**total,'ordinary_cash_div_tax':'1.30','special_cash_div_tax':'0.50',
+                'correction_source':'https://file.finance.sina.com.cn/hkdata98/hk/hk_realtime_announcement/news/20230706/10809161-0.PDF',
+                'correction_note':'公司 2023-022 实施公告：合计 1.80 已含特别股息 0.50；不可重复加总',
+                'correction_originals':event}
+    return [r for r in rows if r not in event]+[normalized]
+
+
 def implemented_dividends(rows, as_of):
     events = {}
-    for row in rows:
+    for row in normalize_disclosed_dividends(rows,as_of):
         if row.get("div_proc") != "实施":
             continue
         if row.get("end_date", "") < f"{int(as_of[:4])-8}0101":
@@ -122,10 +143,12 @@ def summarize(dossier, basic, quote):
         annual = sorted((p for p in inc if p.endswith("1231")), reverse=True)[:8]
         if len(annual) < 5:
             row["issues"].append("完整年度利润记录不足 5 年")
-        dividend_years = {}
+        dividend_years, ordinary_years = {},{}
         for event in events:
             year = event["end_date"][:4]
             dividend_years[year] = dividend_years.get(year, Decimal(0)) + dec(event["cash_div_tax"])
+            # shortcut: unclassified payouts remain a proxy; company-policy research must verify them.
+            ordinary_years[year] = ordinary_years.get(year,Decimal(0))+dec(event.get('ordinary_cash_div_tax',event['cash_div_tax']))
         for period in annual:
             profit = signed(inc[period].get("n_income_attr_p"))
             cash = cf.get(period, {}).get("n_cashflow_act")
@@ -134,6 +157,7 @@ def summarize(dossier, basic, quote):
             item = {"period": period, "profit": str(profit), "deducted_profit": ind.get(period, {}).get("profit_dedt"),
                     "operating_cash": cash, "capex": capex, "simple_fcf": free,
                     "implemented_dps": str(dividend_years[period[:4]]) if period[:4] in dividend_years else None,
+                    "ordinary_dps": str(ordinary_years[period[:4]]) if period[:4] in ordinary_years else None,
                     "audit": audit.get(period, {}).get("audit_result"),
                     "ann_date": disclosed_date(inc[period])}
             row["annual"].append(item)

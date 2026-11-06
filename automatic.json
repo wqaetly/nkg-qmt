@@ -1,0 +1,15 @@
+{
+  "version": "value-dividend-v2",
+  "max_holdings": 5,
+  "cash_reserve": "0.10",
+  "entry_yield": "0.05",
+  "exit_yield": "0.03",
+  "min_historic_yield_pct": "3",
+  "min_daily_amount": "50000000",
+  "max_pe_percentile": "0.50",
+  "max_normalized_pe": "25",
+  "research_watchlist": ["600066.SH", "600600.SH", "600887.SH"],
+  "max_debt_ratio": "0.70",
+  "order_price_buffer": "0.01",
+  "benchmark": "515180.SH"
+}

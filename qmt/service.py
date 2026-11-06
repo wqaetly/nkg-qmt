@@ -6,6 +6,7 @@ from pathlib import Path
 from .config import AppError, atomic_json, now_cn, dec
 from .market import Tushare
 from .research import summarize, evaluate_review, implemented_dividends
+from .selection import load_rules, select_universe
 
 
 def read_json(path):
@@ -29,11 +30,14 @@ def screen(workspace, cfg, today, limit=None, refresh=False, progress=print):
         cache = cache / now_cn().strftime("%H%M%S%f")
     client = Tushare(cache)
     day,next_day = trading_context(client,today)
-    pool_day,members = client.pool(day)
     basics,prices = client.basics(),client.prices(day)
+    rules=load_rules()
+    members,checks,universe_count=select_universe(client,day,basics,prices,rules,workspace,progress)
     codes = members if limit is None else members[:limit]
     result = {"generated_at":now_cn().isoformat(),"requested_date":today,"as_of":day,"next_session":next_day,
-              "pool_date":pool_day,"pool_source":"Tushare index_weight / 000922.CSI 月度快照",
+              "pool_date":day,"pool_source":"沪深主板 → 估值、历史派息与 20 日流动性初筛 → 财报研究",
+              "universe_count":universe_count,"preliminary_count":sum(c['coarse_pass'] for c in checks.values()),
+              "selection_checks":checks,"strategy_version":rules['version'],"selection_rules":rules,
               "pool_size":len(members),"covered":len(codes),"rows":[],"prices":prices,
               "industries":{s:b.get("industry") or "待核实" for s,b in basics.items()},
               "source":"Tushare", "cache_path":str(cache), "complete":len(codes)==len(members)}
@@ -41,6 +45,7 @@ def screen(workspace, cfg, today, limit=None, refresh=False, progress=print):
         dossier = client.dossier(code,day)
         atomic_json(workspace / "dossiers" / day / f"{code}.json",dossier)
         row = summarize(dossier,basics.get(code,{}),prices.get(code,{}))
+        row['selection']=checks[code]
         review_path = workspace / "reviews" / f"{code}.json"
         try:
             review = read_json(review_path) if review_path.exists() else None
@@ -52,7 +57,7 @@ def screen(workspace, cfg, today, limit=None, refresh=False, progress=print):
             row["review_note"] = str(exc) if isinstance(exc,AppError) else "研究确认文件结构无效"
         result["rows"].append(row)
         if index==1 or index%10==0 or index==len(codes):
-            progress(f"已核查结构化数据 {index}/{len(codes)}（指数成分 {len(members)}）",flush=True)
+            progress(f"已核查结构化数据 {index}/{len(codes)}（财报研究批次 {len(members)}）",flush=True)
     atomic_json(workspace / "screen.json",result)
     atomic_json(workspace / "history" / f"screen-{day}.json",result)
     return result

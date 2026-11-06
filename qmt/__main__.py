@@ -5,7 +5,7 @@ import sys
 from decimal import Decimal, InvalidOperation, ROUND_FLOOR
 from pathlib import Path
 
-from .config import ROOT, AppError, load_env, load_config, atomic_json, now_cn, date_key, symbol_key, dec
+from .config import ROOT, AppError, load_env, load_config, atomic_json, now_cn, date_key, symbol_key, dec, workspace_lock
 from .context import research_context
 from .ledger import Ledger
 from .report import render
@@ -17,8 +17,8 @@ def parser():
     p = argparse.ArgumentParser(description="NKG 红利研究工作台：Tushare 初筛 → 人工研究确认 → 模拟/手动记账。不会发单。")
     p.add_argument('--workspace',type=Path,default=ROOT/'data',help='独立数据目录，默认仓库 data/')
     sub = p.add_subparsers(dest='command',required=True)
-    daily = sub.add_parser('daily',help='更新中证红利成分与财报、股价、模拟账本和报告')
-    daily.add_argument('--limit',type=int,help='仅用于调试的覆盖数量；默认完整 100 只')
+    daily = sub.add_parser('daily',help='更新主板估值、流动性、财报与模拟账本和报告')
+    daily.add_argument('--limit',type=int,help='仅用于调试的覆盖数量；默认完整筛选后的研究批次')
     daily.add_argument('--refresh',action='store_true',help='忽略当天缓存重新取数')
     sub.add_parser('report',help='根据已有数据重新生成本地报告')
     research = sub.add_parser('research',help='搜索公开资料并由已配置的 AI 生成研究草稿')
@@ -71,6 +71,11 @@ def selected(report, symbol):
 
 def main(argv=None):
     args = parser().parse_args(argv)
+    with workspace_lock(args.workspace.resolve()):
+        return run(args)
+
+
+def run(args):
     load_env()
     cfg = load_config()
     if args.command=='demo':
@@ -81,6 +86,8 @@ def main(argv=None):
     workspace.mkdir(parents=True,exist_ok=True)
     if (workspace/'.demo-mode').is_file():
         raise AppError('演示目录不能用于真实数据或手动账本。')
+    if (workspace/'.automatic-paper').is_file():
+        raise AppError('自动模拟目录由 daily 管理，不能在其中手动录入或启用实盘账本。')
     ledger = Ledger(workspace/'ledger.sqlite3',cfg)
     report = read_json(workspace/'screen.json') if (workspace/'screen.json').exists() else {}
     status_path = workspace/'status.json'
@@ -92,14 +99,22 @@ def main(argv=None):
         if args.command=='daily':
             if now_cn().hour<21:
                 raise AppError('每日任务请在北京时间 21:00 后运行，等待分红与财报数据更新。')
-            if args.limit is not None and not 1<=args.limit<=100:
-                raise AppError('--limit 需在 1 到 100 之间。')
+            if args.limit is not None and args.limit<1:
+                raise AppError('--limit 必须为正整数。')
             status={'ok':False,'message':'正在更新数据；旧报告暂不可据此新增计划','at':now_cn().isoformat()}
             atomic_json(status_path,status)
             render(workspace,ledger,report,status)
             report = screen(workspace,cfg,today,args.limit,args.refresh)
             update_ledger(workspace,ledger,report)
-            status={'ok':True,'message':f"完成 {report['covered']}/{report['pool_size']} 家结构化初筛；原始披露与预测仍须研究确认",'at':now_cn().isoformat()}
+            if report['complete']:
+                from .automatic import run_automatic
+                from .charts import update_charts
+                automatic=run_automatic(workspace,report,cfg)
+                update_charts(workspace,report,automatic)
+                message=f"完成 {report['universe_count']} 家主板初筛、{report['covered']} 家财报研究与自动模拟检查；本次信号日订单 {len(automatic['plan_ids'])} 笔。机械假设不等于人工研究确认。"
+            else:
+                message=f"仅完成 {report['covered']}/{report['pool_size']} 家调试研究；未运行自动模拟。"
+            status={'ok':True,'message':message,'at':now_cn().isoformat()}
             atomic_json(status_path,status)
         elif args.command=='research':
             row = selected(report,args.symbol)

@@ -2,6 +2,7 @@ import json
 import os
 import re
 import tempfile
+from contextlib import contextmanager
 from datetime import datetime, timezone, timedelta
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from pathlib import Path
@@ -84,3 +85,31 @@ def atomic_json(path, value):
         temporary.replace(path)
     finally:
         temporary.unlink(missing_ok=True)
+
+
+@contextmanager
+def workspace_lock(workspace):
+    workspace.mkdir(parents=True,exist_ok=True)
+    with (workspace/'.run.lock').open('a+b') as stream:
+        stream.seek(0,2)
+        if not stream.tell():
+            stream.write(b'0')
+            stream.flush()
+        stream.seek(0)
+        try:
+            if os.name=='nt':
+                import msvcrt
+                msvcrt.locking(stream.fileno(),msvcrt.LK_NBLCK,1)
+            else:
+                import fcntl
+                fcntl.flock(stream.fileno(),fcntl.LOCK_EX|fcntl.LOCK_NB)
+        except OSError:
+            raise AppError('此数据目录已有任务运行；本次跳过以避免重复订单。') from None
+        try:
+            yield
+        finally:
+            stream.seek(0)
+            if os.name=='nt':
+                msvcrt.locking(stream.fileno(),msvcrt.LK_UNLCK,1)
+            else:
+                fcntl.flock(stream.fileno(),fcntl.LOCK_UN)

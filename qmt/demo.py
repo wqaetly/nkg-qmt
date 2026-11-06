@@ -35,6 +35,12 @@ def create_demo(workspace,cfg):
         for day,price in [('20261103','10.30'),('20261104','10.20'),('20261105','10.25'),('20261106','10.40')]:
             ledger.dividends(events,day)
             ledger.mark('paper',day,{'600001.SH':{'trade_date':day,'close':price}})
+        summary=ledger.summary('paper')
+        report['demo_operations']={'chart_plans':summary['plans'],'chart_fills':summary['fills'],'notes':{},'assessments':[],
+                                   'focus_symbols':['600001.SH','600002.SH']}
+        candles=[{'day':day,'open':open_price,'high':max(open_price,close)+.1,'low':min(open_price,close)-.1,'close':close,'vol':10000}
+            for day,open_price,close in [('20261102',10.1,10.2),('20261103',10,10.3),('20261104',10.2,10.2),('20261105',10.2,10.25),('20261106',10.25,10.4)]]
+        atomic_json(workspace/'charts.json',{'as_of':'20261106','stocks':{'600001.SH':{'candles':candles,'error':None}}})
         atomic_json(workspace/'screen.json',report)
         return render(workspace,ledger,report,{'ok':True,'message':'演示已跑通：信号、次日模拟成交、分红应收与到账；与真实数据完全隔离'})
     finally:

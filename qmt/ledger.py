@@ -105,7 +105,11 @@ class Ledger:
             raise AppError("交易计划参数无效。")
         if not symbol.startswith(('600','601','603','605','000','001','002','003')):
             raise AppError("首版执行仅支持沪深主板普通股；其他板块可研究，交易规则需另核实。")
-        if side=='buy' and (quantity%100 or not row.get('gate') or not row.get('scenarios')):
+        automatic = (mode=='paper' and row.get('automatic_signal') is True and
+                     self.db.execute("SELECT 1 FROM metadata WHERE key='automatic-rules'").fetchone() is not None)
+        if row.get('automatic_signal') and not automatic:
+            raise AppError('机械信号只能进入独立自动模拟账本，不能用于手动交易。')
+        if side=='buy' and (quantity%100 or (not automatic and (not row.get('gate') or not row.get('scenarios')))):
             raise AppError("买入须为整手且研究已确认、数据完整。")
         price = dec(limit_price,positive=True)
         if price != price.quantize(Decimal('0.01')):
@@ -219,6 +223,8 @@ class Ledger:
                     reason = '无成交或开盘触及涨跌停，未假定成交'
                 elif not bar['low']<=price<=bar['high']:
                     reason = '模拟价格超出日内范围，未假定成交'
+                elif plan['quantity']>bar['vol']*100*Decimal('0.01'):
+                    reason = '订单超过当日成交量的 1%，未假定有足够流动性'
                 elif (direction==1 and price>dec(plan['limit_price'])) or (direction==-1 and price<dec(plan['limit_price'])):
                     reason = '开盘超出计划限价，不追价'
                 if reason:

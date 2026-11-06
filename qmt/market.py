@@ -134,6 +134,22 @@ class Tushare:
             result[day] = item
         return result
 
+    def candles(self, symbol, start, end):
+        rows = self.call('daily',{'ts_code':symbol,'start_date':start,'end_date':end},
+                         'ts_code,trade_date,open,high,low,close,vol')
+        result = {}
+        for row in rows:
+            day = date_key(row['trade_date'])
+            if row['ts_code']!=symbol or not start<=day<=end or day in result:
+                raise AppError('K 线代码、日期或重复记录异常。')
+            values = {key:dec(row[key],positive=key!='vol') for key in ('open','high','low','close','vol')}
+            if not values['low']<=min(values['open'],values['close'])<=max(values['open'],values['close'])<=values['high']:
+                raise AppError('K 线 OHLC 关系异常。')
+            result[day]={'day':day,**{key:float(value) for key,value in values.items()}}
+        if not result:
+            raise AppError('该股票未返回 K 线，不以其他股票或演示数据替代。')
+        return [result[day] for day in sorted(result)]
+
     def dossier(self, symbol, as_of):
         start = f"{int(as_of[:4]) - 9}0101"
         common = {"ts_code": symbol, "start_date": start, "end_date": as_of}

@@ -20,3 +20,18 @@ MIT 许可保存在 `vendor/dividend_stock_research/LICENSE`。
 
 原始接口结果、参数、字段、取数时间仅保存在被忽略的 data/cache 下，不带 token。
 第三方数据许可不随代码的开源许可转移，不将行情和私人报告推送到公开仓库。
+
+## 自动模拟扩展
+
+自动模拟的盈利代理、历史支付率、财务阈值、月度仓位和买卖规则由本项目新增，不属于上游已验证策略；没有把机器输出设为人工研究确认。
+
+- [Tushare 基金复权因子](https://tushare.pro/document/2?doc_id=199)：使用 fund_daily 收盘价乘 fund_adj 因子构造同期参考变化。
+- [易方达中证红利 ETF 产品资料概要（2026-03-23）](https://www.sse.com.cn/disclosure/fund/announcement/c/new/2026-03-23/515180_20260323_XCTC.pdf)：515180 跟踪中证红利指数，股票型风险，投资者交易费用按券商实际收取；只是比较基准，不代表推荐购买。
+- [OpenAI 定时任务文档](https://learn.chatgpt.com/docs/automations?surface=app)：本机定时工作依赖电脑开机及桌面应用运行。
+
+## v2 选股与数据修正
+
+- 上游方法不要求候选来自中证红利。本项目 v2 使用沪深主板分层筛选；3% 历史股息率、同行 PE 中位数、三年 PE 分位 50%、盈利代理 PE 25 倍、20 日成交额中位数 5,000 万元，均为本项目实验参数，并非上游结论。
+- [Tushare 日线字段](https://tushare.pro/document/2?doc_id=27)：成交额 amount 为千元，成交量 vol 为手；停牌期间不提供数据。
+- [Tushare 每日指标](https://tushare.pro/document/2?doc_id=32)：PE/PB 与历史股息率字段；只对正 PE 样本做同行/历史比较。
+- [青岛啤酒 2023-022 年度 A 股权益分派实施公告（公司公告镜像）](https://file.finance.sina.com.cn/hkdata98/hk/hk_realtime_announcement/news/20230706/10809161-0.PDF)，2023-07-06，PDF 第 2—3 页：2022 年普通每股 1.30 元、特别 0.50 元，共计 1.80 元；登记日 2023-07-13、除息及派息日 2023-07-14。仅用于修正已知重复组成项，不作为自动批准或未来分红承诺。
