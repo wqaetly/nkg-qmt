@@ -1,0 +1,12 @@
+{
+  "index_code": "000922.CSI",
+  "required_yields": ["0.04", "0.05", "0.06"],
+  "paper_cash": "10000.00",
+  "paper_max_position": "2000.00",
+  "paper_max_sector": "4000.00",
+  "commission_rate": "0.0003",
+  "minimum_commission": "5.00",
+  "slippage_bps": 5,
+  "sell_stamp_rate": "0.0005",
+  "review_max_age_days": 30
+}
