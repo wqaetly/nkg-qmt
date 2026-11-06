@@ -25,7 +25,7 @@
   function changeSource(requested) {
     const run=history.runs?.find(item=>item.id===source.value);
     historical=!!run;
-    data=run ? {...run,stocks:history.stocks,names:history.names,assessments:[],notes:{}} : daily;
+    data=run ? {...run,stocks:history.stocks,names:history.names,assessments:[],notes:{},dividend_notes:history.dividend_notes||[]} : daily;
     const previous=requested||select.value, codes=Object.keys(data.stocks);
     select.replaceChildren(); codes.forEach(code=>option(code,`${code} · ${data.names?.[code]||code}`,select));
     select.value=codes.includes(previous)?previous:(data.fills.find(fill=>codes.includes(fill.symbol))?.symbol||codes[0]||'');
@@ -45,6 +45,7 @@
     const assessment = data.assessments.find(a => a.symbol === code);
     const plans = data.plans.filter(p => p.symbol === code), fills = data.fills.filter(f => f.symbol === code);
     const stockEvents=(data.stock_events||[]).filter(event=>event.symbol===code);
+    const dividendNotes=(data.dividend_notes||[]).filter(event=>event.symbol===code);
     const target=trade.value===''?null:trade.value.startsWith('stock:')?stockEvents[Number(trade.value.slice(6))]:fills[Number(trade.value)];
     const targetIndex=target?all.findIndex(bar=>bar.day===(target.trade_date||target.ex_date)):-1;
     const first=targetIndex>=0?Math.max(0,Math.min(all.length-count,targetIndex-Math.floor(count/2))):Math.max(0,all.length-count);
@@ -67,6 +68,19 @@
         if(event.source) {
           const link=document.createElement('a'); link.href=event.source; link.target='_blank'; link.rel='noreferrer'; link.textContent=' 实施依据'; item.appendChild(link);
         } else item.textContent+=' 来源未记录。';
+        list.appendChild(item);
+      });
+      details.appendChild(list); explanation.appendChild(details);
+    }
+    if(dividendNotes.length) {
+      const details=document.createElement('details'); details.className='dividend-notes';
+      const summary=document.createElement('summary'); summary.textContent=`已核实派息说明 · ${dividendNotes.length} 项`; details.appendChild(summary);
+      const note=document.createElement('p'); note.textContent='公司派息说明，不代表本账户实际收到；单项金额不等于全年派息。'; details.appendChild(note);
+      const list=document.createElement('ul');
+      dividendNotes.forEach(event=>{
+        const item=document.createElement('li'); item.className='analysis';
+        item.textContent=`所属期 ${labelDate(event.end_date)} · 登记日 ${labelDate(event.record_date)} · 派息日 ${labelDate(event.pay_date)}；每股合计 ${event.cash_div_tax} 元 / 普通 ${event.ordinary_cash_div_tax} 元 / 特别 ${event.special_cash_div_tax} 元；公告可用日 ${labelDate(event.available_on)}。`;
+        const link=document.createElement('a'); link.href=event.source; link.target='_blank'; link.rel='noreferrer'; link.textContent=' 原文依据'; item.appendChild(link);
         list.appendChild(item);
       });
       details.appendChild(list); explanation.appendChild(details);

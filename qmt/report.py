@@ -5,7 +5,7 @@ import re
 from collections import Counter
 from pathlib import Path
 
-from .config import ROOT, now_cn
+from .config import ROOT, AppError, date_key, dec, now_cn
 from .context import safe_url
 from .selection import automatic_path
 
@@ -187,6 +187,33 @@ def data_warnings_panel(warnings):
 
 def chart_stock_events(events):
     return [{**event,'source':safe_url(event.get('source'))} for event in (events or [])]
+
+
+def chart_dividend_notes(events_by_symbol, as_of):
+    notes=[]
+    for symbol,events in events_by_symbol.items():
+        for event in events:
+            source=safe_url(event.get('correction_source'))
+            if not source or not event.get('correction_available_on'):
+                continue
+            try:
+                available=date_key(event['correction_available_on'])
+                if available>as_of:
+                    continue
+                record,pay=[date_key(event.get(key)) for key in ('record_date','pay_date')]
+                for component in event.get('fiscal_components',[event]):
+                    if not all(key in component for key in ('ordinary_cash_div_tax','special_cash_div_tax')):
+                        continue
+                    cash,ordinary,special=[dec(component[key]) for key in ('cash_div_tax','ordinary_cash_div_tax','special_cash_div_tax')]
+                    if cash!=ordinary+special:
+                        continue
+                    notes.append({'symbol':symbol,'end_date':date_key(component['end_date']),
+                                  'record_date':record,'pay_date':pay,'cash_div_tax':str(cash),
+                                  'ordinary_cash_div_tax':str(ordinary),'special_cash_div_tax':str(special),
+                                  'available_on':available,'source':source})
+            except (AppError,KeyError,TypeError,ValueError):
+                continue
+    return notes
 
 
 def stock_events_panel(events):
@@ -390,7 +417,8 @@ def historical_chart_data(workspace):
             continue
         runs.append({'id':rate,'label':f'本次历史 {int(rate)}%'+(' · 主方案' if rate=='005' else ''),
                      'plans':result['plans'],'fills':result['trades'],'stock_events':chart_stock_events(result.get('stock_events'))})
-    return {'version':version,'start':coverage.get('start'),'end':coverage.get('end'),'stocks':stocks,'names':names,'runs':runs} if runs else {}
+    return {'version':version,'start':coverage.get('start'),'end':coverage.get('end'),'stocks':stocks,'names':names,'runs':runs,
+            'dividend_notes':chart_dividend_notes(market.get('dividends',{}),coverage['end'])} if runs else {}
 
 
 def chart_panel(workspace, report, automatic, research=None):

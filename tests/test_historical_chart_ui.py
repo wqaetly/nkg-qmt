@@ -7,7 +7,7 @@ import unittest
 from pathlib import Path
 
 from qmt.config import ROOT
-from qmt.report import chart_panel, historical_chart_data, research_panel, stock_events_panel
+from qmt.report import chart_panel, historical_chart_data, research_panel, stock_events_panel, chart_dividend_notes
 
 
 class HistoricalChartUiTests(unittest.TestCase):
@@ -110,6 +110,42 @@ class HistoricalChartUiTests(unittest.TestCase):
             self.assertEqual(stock_events_panel(None),'')
             self.assertEqual(stock_events_panel([]),'')
 
+    def test_classified_dividend_notes_use_only_current_archive_and_keep_cash_and_prices_unchanged(self):
+        event={'end_date':'20250630','record_date':'20250801','pay_date':'20250804',
+               'cash_div_tax':'.2584','ordinary_cash_div_tax':'0','special_cash_div_tax':'.2584',
+               'correction_available_on':'20250731','correction_source':'https://example.com/special.pdf'}
+        component={key:event[key] for key in ('end_date','cash_div_tax','ordinary_cash_div_tax','special_cash_div_tax')}
+        joint={key:value for key,value in event.items() if key not in ('ordinary_cash_div_tax','special_cash_div_tax')}
+        joint['fiscal_components']=[component]
+        self.assertEqual(chart_dividend_notes({'600000.SH':[event]},'20250804'),
+                         chart_dividend_notes({'600000.SH':[joint]},'20250804'))
+        note=chart_dividend_notes({'600000.SH':[joint]},'20250804')[0]
+        self.assertEqual((note['cash_div_tax'],note['ordinary_cash_div_tax'],note['special_cash_div_tax']),('0.2584','0','0.2584'))
+        for invalid in ({'correction_source':'javascript:alert(1)'},{'correction_available_on':'20250805'},
+                        {'correction_available_on':None},{'ordinary_cash_div_tax':None},
+                        {'cash_div_tax':'.3'},{'cash_div_tax':'NaN'}):
+            self.assertEqual(chart_dividend_notes({'600000.SH':[{**event,**invalid}]},'20250804'),[])
+        self.assertEqual(chart_dividend_notes({'600000.SH':[{'cash_div_tax':'.2584'}]},'20250804'),[])
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace=Path(tmp);folder,_,result=self.fixture(workspace)
+            market=json.loads((folder/'market.json').read_text(encoding='utf-8'))
+            market['dividends']={'600000.SH':[joint]}
+            (folder/'market.json').write_text(json.dumps(market),encoding='utf-8')
+            before={p:p.read_bytes() for p in workspace.rglob('*.json')}
+            history=historical_chart_data(workspace)
+            self.assertEqual(history['dividend_notes'],[note])
+            self.assertEqual(history['runs'][0]['fills'],result['trades'])
+            self.assertEqual(history['runs'][1]['fills'],[])
+            self.assertEqual(history['stocks']['600000.SH']['candles'][-1]['close'],8.2)
+            page=chart_panel(workspace,{'as_of':'20250804','source':'Tushare','rows':[]},{'focus_symbols':[]})
+            payload=json.loads(re.search(r'id="market-chart-data">(.*?)</script>',page,re.S)[1])
+            self.assertEqual(payload.get('dividend_notes',[]),[])
+            self.assertEqual(payload['historical']['dividend_notes'],[note])
+            self.assertEqual(before,{p:p.read_bytes() for p in workspace.rglob('*.json')})
+            market.pop('dividends')
+            (folder/'market.json').write_text(json.dumps(market),encoding='utf-8')
+            self.assertEqual(historical_chart_data(workspace)['dividend_notes'],[])
+
     def test_annual_cohort_counts_show_union_separately_from_each_year_cap(self):
         audit={'stocks':[{'symbol':str(i)} for i in range(25)],'target_count':20,'rebalances':[
             {'day':'20201231','symbols':list(range(20)),'candidate_count':30,'rejected':[{'reason':'财务待核实'}]},
@@ -147,18 +183,25 @@ const candles=Array.from({length:160},(_,index)=>{const date=new Date(Date.UTC(2
 const fill={symbol:'600000.SH',side:'buy',quantity:500,price:'8.18',fee:'5',trade_date:candles[20].day,plan_id:1};
 const plan={symbol:'600000.SH',side:'buy',quantity:500,limit_price:'8.2',id:1,signal_date:candles[19].day,execute_date:candles[20].day,status:'filled',note:'回放'};
 const stockEvent={symbol:'600000.SH',record_date:candles[20].day,ex_date:candles[21].day,stock_list_date:candles[22].day,record_quantity:500,ratio:'0.3',quantity:150,source:'https://example.com/notice.pdf'};
+const dividendNote={symbol:'600000.SH',end_date:'20241231',record_date:candles[20].day,pay_date:candles[21].day,cash_div_tax:'0.2584',ordinary_cash_div_tax:'0',special_cash_div_tax:'0.2584',available_on:candles[19].day,source:'https://example.com/special.pdf'};
 const dailyEvent={...stockEvent,ex_date:candles[150].day,record_quantity:100,quantity:30,stock_list_date:null,source:''};
-const stocks={'600000.SH':{candles}},names={'600000.SH':'测试公司'};
-nodes['market-chart-data'].textContent=JSON.stringify({stocks,names,as_of:'20250609',assessments:[{symbol:'600000.SH',reference_price:8,state:'等待价格',reason:'日常原因'}],plans:[],fills:[],stock_events:[dailyEvent],notes:{},historical:{version:'historical-v9',start:candles[0].day,end:candles.at(-1).day,stocks,names,runs:[{id:'004',label:'历史4%',plans:[plan],fills:[fill],stock_events:[stockEvent]},{id:'005',label:'历史5%',plans:[],fills:[]}]}});
+const stocks={'600000.SH':{candles},'600001.SH':{candles}},names={'600000.SH':'测试公司','600001.SH':'无已核实说明'};
+nodes['market-chart-data'].textContent=JSON.stringify({stocks,names,as_of:'20250609',assessments:[{symbol:'600000.SH',reference_price:8,state:'等待价格',reason:'日常原因'}],plans:[],fills:[],stock_events:[dailyEvent],notes:{},historical:{version:'historical-v9',start:candles[0].day,end:candles.at(-1).day,stocks,names,dividend_notes:[dividendNote],runs:[{id:'004',label:'历史4%',plans:[plan],fills:[fill],stock_events:[stockEvent]},{id:'005',label:'历史5%',plans:[],fills:[]}]}});
 const button=new Node('button');button.dataset={chartSymbol:'600000.SH'};
 vm.runInNewContext(fs.readFileSync(process.argv[1],'utf8'),{requestAnimationFrame:fn=>fn(),window:{addEventListener:(event,handler)=>windowHandlers[event]=handler},document:{getElementById:id=>nodes[id],querySelectorAll:()=>[button],createElement:tag=>new Node(tag),createElementNS:(_,tag)=>new Node(tag)}});
 const elements=()=>nodes['stock-chart'].children[0].children;
 assert(elements().some(node=>node.attrs['data-kind']==='reference'));assert.equal(nodes['chart-source'].value,'daily');
+assert(!nodes['chart-explanation'].children.some(node=>node.className==='dividend-notes'));
 assert.equal(elements().find(node=>node.attrs['data-kind']==='stock-event').attrs['data-quantity'],'30');
 nodes['chart-trade'].value='stock:0';nodes['chart-trade'].handlers.change();
 assert.match(nodes['chart-tip'].textContent,/送转新增 30 股.*上市日 —/);
 assert(!elements().some(node=>node.attrs['data-kind']==='fill'),'A stock distribution is not a buy fill');
 nodes['chart-source'].value='004';nodes['chart-source'].handlers.change();
+const dividendFlow=nodes['chart-explanation'].children.find(node=>node.className==='dividend-notes');
+assert.equal(dividendFlow.open,undefined);assert.equal(dividendFlow.attrs.open,undefined);
+assert.match(dividendFlow.children[1].textContent,/公司派息说明，不代表本账户实际收到/);
+assert.match(dividendFlow.children[2].children[0].textContent,/所属期 2024-12-31.*每股合计 0.2584 元 \/ 普通 0 元 \/ 特别 0.2584 元.*公告可用日 2025-01-20/);
+assert.equal(dividendFlow.children[2].children[0].children[0].href,dividendNote.source);
 assert.equal(nodes['chart-trade'].children.length,3);assert.equal(nodes['chart-trade'].disabled,false);
 assert(!elements().some(node=>node.attrs['data-kind']==='reference'));
 assert(!elements().some(node=>node.attrs['data-kind']==='fill'),'Old trade should be outside latest 60 bars');
@@ -189,9 +232,14 @@ const stockX=Number(elements().find(node=>node.attrs['data-kind']==='stock-event
 assert(stockX>=nodes['stock-chart'].scrollLeft&&stockX<=nodes['stock-chart'].scrollLeft+nodes['stock-chart'].clientWidth);
 nodes['chart-source'].value='005';nodes['chart-source'].handlers.change();
 assert.equal(nodes['chart-trade'].disabled,true);assert(!elements().some(node=>node.attrs['data-kind']==='fill'));
-assert(!elements().some(node=>node.attrs['data-kind']==='stock-event'));assert(!nodes['chart-explanation'].children.some(node=>node.tag==='details'));
+assert(!elements().some(node=>node.attrs['data-kind']==='stock-event'));assert(!nodes['chart-explanation'].children.some(node=>node.className==='stock-events'));
+assert(nodes['chart-explanation'].children.some(node=>node.className==='dividend-notes'),'Company disclosure is visible even when this run has no fills');
+assert(!elements().some(node=>node.attrs['data-kind']==='dividend'),'A disclosure is not a price marker');
+nodes['chart-symbol'].value='600001.SH';nodes['chart-symbol'].handlers.change();
+assert(!nodes['chart-explanation'].children.some(node=>node.className==='dividend-notes'),'Another stock must not inherit the disclosure');
 button.handlers.click();assert.equal(nodes['chart-source'].value,'daily');assert(elements().some(node=>node.attrs['data-kind']==='reference'));
 assert.equal(elements().find(node=>node.attrs['data-kind']==='stock-event').attrs['data-quantity'],'30');
+assert(!nodes['chart-explanation'].children.some(node=>node.className==='dividend-notes'),'Daily view must not inherit historical disclosures');
 '''
         subprocess.run(['node','-e',script,str(ROOT/'qmt/chart.js')],check=True,capture_output=True,text=True)
 
