@@ -15,7 +15,7 @@ from .service import screen, read_json, update_ledger
 
 def parser():
     p = argparse.ArgumentParser(description="NKG 红利研究工作台：Tushare 初筛 → 人工研究确认 → 模拟/手动记账。不会发单。")
-    p.add_argument('--workspace',type=Path,default=ROOT/'data',help='独立数据目录，默认仓库 data/')
+    p.add_argument('--workspace',type=Path,default=ROOT/'data/capital-100k',help='独立数据目录，默认仓库 data/capital-100k/；旧 data/ 账本保留')
     sub = p.add_subparsers(dest='command',required=True)
     daily = sub.add_parser('daily',help='更新主板估值、流动性、财报与模拟账本和报告')
     daily.add_argument('--limit',type=int,help='仅用于调试的覆盖数量；默认完整筛选后的研究批次')
@@ -23,7 +23,8 @@ def parser():
     sub.add_parser('report',help='根据已有数据重新生成本地报告')
     lab=sub.add_parser('lab',help='冻结二十只研究名单并更新K线，不运行定时任务或新增订单')
     lab.add_argument('--enrich',action='store_true',help='使用已配置搜索和AI补充公开资料草稿')
-    sub.add_parser('backtest',help='独立历史二十股研究池与含费用回放，不更改模拟账本')
+    backtest=sub.add_parser('backtest',help='独立历史二十股研究池与含费用回放，不更改模拟账本')
+    backtest.add_argument('--long-history',action='store_true',help='从2014年末独立建池，回放2015年至今；另取更早财报与估值预热')
     research = sub.add_parser('research',help='搜索公开资料并由已配置的 AI 生成研究草稿')
     research.add_argument('symbol',type=symbol_key)
     review = sub.add_parser('review-template',help='生成待人工核查的三情景模板，不覆盖已有模板')
@@ -120,8 +121,8 @@ def run(args):
             status={'ok':True,'message':message,'at':now_cn().isoformat()}
             atomic_json(status_path,status)
         elif args.command=='backtest':
-            from .experiment import run_experiment
-            run_experiment(workspace,report['as_of'],cfg)
+            from .experiment import run_experiment, EXPERIMENT, LONG_EXPERIMENT
+            run_experiment(workspace,report['as_of'],cfg,experiment=LONG_EXPERIMENT if args.long_history else EXPERIMENT)
         elif args.command=='lab':
             from .lab import run_lab
             run_lab(workspace,report,args.enrich)
@@ -208,6 +209,10 @@ def run(args):
         if args.command=='daily':
             status={'ok':False,'message':'本次更新暂停：'+message,'at':now_cn().isoformat()}
             atomic_json(status_path,status)
+            render(workspace,ledger,report,status)
+        elif args.command=='backtest':
+            atomic_json(workspace/'backtests'/'latest.json',{'status':'blocked','as_of':report.get('as_of'),
+                        'message':'本次历史实验暂停：'+message,'runs':[],'limitations':['未完成的区间不输出收益，旧实验文件保留。']})
             render(workspace,ledger,report,status)
         print('错误：'+message,file=sys.stderr)
         return 1

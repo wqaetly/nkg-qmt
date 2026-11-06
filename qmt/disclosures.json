@@ -1,0 +1,55 @@
+{
+  "industry_conflicts": [
+    {
+      "symbol": "600882.SH",
+      "date": "20141231",
+      "reason": "接口将2014年华联矿业归入食品饮料，与当时已披露矿业经营业务冲突；未取得可靠历史申万归属，禁止用于同行估值或收益验证。",
+      "source": "https://file.finance.sina.com.cn/211.154.219.97%3A9494/MRGG/CNSESH_STOCK/2014/2014-4/2014-04-28/1390444.PDF",
+      "pages": "6",
+      "published_on": "20140428",
+      "corroborating_source": "https://static.cninfo.com.cn/finalpage/2016-04-26/1202246074.PDF",
+      "corroborating_pages": "1",
+      "note": "仅标识已核实冲突，不猜测正确申万代码，不删除研究对象；2016公告只作事后核验，不能成为2014信号的依据。"
+    }
+  ],
+  "stock_only": [
+    {
+      "expected": {
+        "ts_code": "601919.SH",
+        "end_date": "20201231",
+        "ann_date": "20210529",
+        "div_proc": "实施",
+        "cash_div_tax": null,
+        "stk_div": 0.3,
+        "record_date": "20210713",
+        "ex_date": "20210714",
+        "pay_date": null,
+        "imp_ann_date": "20210708"
+      },
+      "available_on": "20210708",
+      "stock_list_date": "20210715",
+      "source": "https://pdf.dfcfw.com/pdf/H2_AN202107071502359554_1.pdf",
+      "pages": "1—2",
+      "note": "中远海控2021-028实施公告：2020年度仅以资本公积每股转增0.3股，不产生现金派息；现金付款日不适用。"
+    },
+    {
+      "expected": {
+        "ts_code": "600507.SH",
+        "end_date": "20191231",
+        "ann_date": "20200320",
+        "div_proc": "实施",
+        "cash_div_tax": null,
+        "stk_div": 0.49,
+        "record_date": "20200408",
+        "ex_date": "20200409",
+        "pay_date": null,
+        "imp_ann_date": "20200402"
+      },
+      "available_on": "20210317",
+      "stock_list_date": "20200410",
+      "source": "https://static.cninfo.com.cn/finalpage/2021-03-17/1209393844.PDF",
+      "pages": "24、40",
+      "note": "方大特钢2020年报确认2019年度现金派息为零、每股转增0.49股；新增股上市日2020-04-10。登记及除权日保留接口原值，现金付款日不适用。此项证据仅从该年报披露日起生效。"
+    }
+  ]
+}

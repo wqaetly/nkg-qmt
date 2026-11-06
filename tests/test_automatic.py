@@ -42,7 +42,7 @@ def report(row,next_day='20261106'):
 
 class AutomaticTests(unittest.TestCase):
     def setUp(self):
-        self.cfg=load_config();self.rules=load_rules();self.ledger=Ledger(':memory:',self.cfg)
+        self.cfg=load_config();self.rules={**load_rules(),'max_holdings':5};self.ledger=Ledger(':memory:',self.cfg)
         self.ledger.initialize('paper','10000','2000','4000','20261105')
         save_meta(self.ledger,'automatic-rules',self.rules)
 

@@ -8,15 +8,15 @@ from statistics import median
 from .config import ROOT, AppError, date_key, dec, symbol_key
 
 
-VERSION = 'value-dividend-v2'
+VERSION = 'value-dividend-v3'
 
 
 def load_rules():
     rules = json.loads((ROOT/'automatic.json').read_text(encoding='utf-8'))
     if rules['version'] != VERSION or rules['benchmark'] != '515180.SH':
         raise AppError('自动模拟规则版本或比较基准无效。')
-    if type(rules['max_holdings']) is not int or not 1 <= rules['max_holdings'] <= 5:
-        raise AppError('自动模拟持股数量应为 1—5。')
+    if type(rules['max_holdings']) is not int or not 1 <= rules['max_holdings'] <= 20:
+        raise AppError('自动模拟持股数量应为 1—20。')
     for key in ('cash_reserve','entry_yield','exit_yield','max_debt_ratio','order_price_buffer','max_pe_percentile'):
         if not 0 <= dec(rules[key]) < 1:
             raise AppError('自动模拟比例必须在 0 到 1 之间。')

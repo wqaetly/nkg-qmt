@@ -7,7 +7,7 @@ from pathlib import Path
 
 from qmt.config import ROOT, load_config
 from qmt.demo import create_demo
-from qmt.report import chart_panel, optional_report, percent, research_panel
+from qmt.report import chart_panel, optional_report, percent, research_panel, comparison_chart, period_diagnostics_panel, coverage_panel, automatic_panel
 
 
 class ResearchUiTests(unittest.TestCase):
@@ -31,6 +31,21 @@ class ResearchUiTests(unittest.TestCase):
         self.assertIn('单个区间超过 10% 不代表目标已验证',page)
         self.assertIn('仅诊断，待验证',research_panel(research,{'status':'diagnostic'}))
 
+    def test_automatic_budget_holdings_and_benchmark_use_each_ledgers_actual_settings(self):
+        data={'day':'20261106','account':{'account':{'initial_cash':'100000','start_date':'20261106'},'marks':[{'equity':'100000'}]},
+              'rules':{'max_holdings':20,'cash_reserve':'.10','benchmark':'510880.SH'},'assessments':[]}
+        page=automatic_panel(data)
+        self.assertIn('初始虚拟本金 ¥100,000.00',page)
+        self.assertIn('持股上限 20 只',page)
+        self.assertIn('现金底仓 10.00%',page)
+        self.assertIn('基准 510880.SH',page)
+        self.assertNotIn('515180.SH',page)
+        data['account']['account']['initial_cash']='10000'
+        data['rules']['max_holdings']=5
+        old=automatic_panel(data)
+        self.assertIn('初始虚拟本金 ¥10,000.00',old)
+        self.assertIn('持股上限 5 只',old)
+
     def test_optional_records_and_untrusted_text_are_safe(self):
         with tempfile.TemporaryDirectory() as tmp:
             path=Path(tmp)/'latest.json'
@@ -47,6 +62,70 @@ class ResearchUiTests(unittest.TestCase):
         self.assertIn('https://example.com/report?a=1&amp;b=2',page)
         self.assertEqual(percent('not a number'),'—')
         self.assertEqual(percent('nan'),'—')
+
+    def test_comparison_payload_and_diagnostics_are_not_raw_html(self):
+        backtest={'comparison_series':[{'label':'</script><img src=x onerror=alert(1)>','kind':'strategy','points':[{'day':'20230102','value':1}]}],
+                  'diagnostics':{'evaluations':940,'states':{'待数据核实':600},'reasons':[{'reason':'<script>缺失</script>','count':400}]},
+                  'runs':[{'label':'实验','metrics':{'cagr':'.1','total_return':'.2','max_drawdown':'-.3','average_exposure':'.4','trade_count':4,'costs':'20'}}]}
+        page=research_panel(self.research(),backtest)
+        self.assertNotIn('</script><img',page)
+        self.assertNotIn('<script>缺失</script>',page)
+        self.assertIn('\\u003c/script\\u003e',page)
+        self.assertIn('940',page)
+        self.assertIn('平均仓位',page)
+        self.assertIn('40.00%',page)
+        self.assertIn('成交笔数',page)
+        self.assertIn('费用 / 元',page)
+        self.assertNotIn('comparison-data',comparison_chart({}))
+
+    def test_annual_and_rolling_metrics_label_actual_period_without_claiming_success(self):
+        data={'label':'5%主方案 <script>不可执行</script>',
+              'annual':[{'year':2026,'start':'20251231','end':'20261106',
+                         'metrics':{'total_return':'.12','max_drawdown':'-.08','average_exposure':'.25','trade_count':4,'costs':'22.25'}}],
+              'rolling_three_year':{'windows':5,'min_cagr':-.1,'median_cagr':.08,'max_cagr':.2,'positive_fraction':.8}}
+        page=period_diagnostics_panel(data)
+        self.assertIn('2026 · 20251231—20261106',page)
+        self.assertIn('12.00%',page)
+        self.assertIn('25.00%',page)
+        self.assertIn('22.25',page)
+        self.assertIn('最低年化',page)
+        self.assertIn('80.00%',page)
+        self.assertIn('最后一年可能尚未结束',page)
+        self.assertIn('重叠窗口不是独立样本',page)
+        self.assertNotIn('<script>不可执行</script>',page)
+        self.assertIn('&lt;script&gt;',page)
+        full=research_panel(self.research(),{'period_diagnostics':data})
+        self.assertIn('待验证，不是收益承诺',full)
+        self.assertIn('id="period-diagnostics"',full)
+
+    def test_missing_annual_or_rolling_metrics_are_not_invented(self):
+        self.assertEqual(period_diagnostics_panel({}),'')
+        self.assertEqual(period_diagnostics_panel({'rolling_three_year':{'windows':0}}),'')
+        self.assertEqual(period_diagnostics_panel({'rolling_three_year':{'windows':2,'min_cagr':.1}}),'')
+        only_rolling={'rolling_three_year':{'windows':3,'min_cagr':0,'median_cagr':.01,'max_cagr':.02,'positive_fraction':1}}
+        self.assertIn('完整三年窗口数',period_diagnostics_panel(only_rolling))
+        self.assertNotIn('<th>年度 / 实际区间</th>',period_diagnostics_panel(only_rolling))
+        only_rolling['rolling_three_year']['positive_fraction']=float('nan')
+        self.assertEqual(period_diagnostics_panel(only_rolling),'')
+
+    def test_blocked_history_reports_coverage_without_strategy_or_annual_returns(self):
+        coverage={'start':'20141231','end':'20261106','sessions':2885,'stocks':20,'price_rows':56000,'valuation_rows':55000,
+                  'input_errors':{'600882.SH':'历史行业存在冲突 <script>不可执行</script>'}}
+        backtest={'status':'blocked','coverage':coverage,
+                  'comparison_series':[{'label':'现金参考','kind':'cash','points':[{'day':'20141231','value':1},{'day':'20261106','value':1}]}],
+                  'period_diagnostics':{'label':'不应显示的旧统计','annual':[{'year':2015,'start':'20141231','end':'20151231','metrics':{'total_return':'.5'}}]}}
+        page=research_panel(self.research(),backtest)
+        for value in ('20141231','20261106','2885','56000','55000','600882.SH'):
+            self.assertIn(value,page)
+        self.assertIn('输入待核实',page)
+        self.assertIn('输入疑点 1 只',page)
+        self.assertIn('不是股票亏损',page)
+        self.assertIn('不能把现金线当作策略收益或已通过验证',page)
+        self.assertNotIn('<script>不可执行</script>',page)
+        self.assertNotIn('id="period-diagnostics"',page)
+        self.assertNotIn('不应显示的旧统计',page)
+        self.assertEqual(coverage_panel({}),'')
+        self.assertIn('本次未记录输入错误',coverage_panel({**coverage,'input_errors':{}}))
 
     def test_chart_can_select_twenty_matching_research_stocks_but_not_stale_pool(self):
         research=self.research()
@@ -95,6 +174,51 @@ assert.equal(elements['research-empty'].hidden,false);
 assert.equal(elements['research-next'].disabled,true);
 '''
         subprocess.run(['node','-e',script,str(ROOT/'qmt/research-ui.js')],check=True,capture_output=True,text=True)
+
+    @unittest.skipUnless(shutil.which('node'),'Node is needed for the chart interaction self-check')
+    def test_comparison_toggles_keyboard_and_missing_dates(self):
+        script=r'''
+const assert = require('node:assert/strict'), fs = require('node:fs'), vm = require('node:vm');
+class Node {
+  constructor(tag) { this.tag=tag;this.children=[];this.attrs={};this.style={};this.handlers={};this.textContent=''; }
+  setAttribute(key,value) { this.attrs[key]=value; }
+  appendChild(node) { this.children.push(node); }
+  append(...nodes) { this.children.push(...nodes); }
+  replaceChildren() { this.children=[]; }
+  addEventListener(event,handler) { this.handlers[event]=handler; }
+}
+const code=fs.readFileSync(process.argv[1],'utf8');
+const series=[
+  {label:'策略',kind:'strategy',points:[{day:'20230102',value:1},{day:'20230103',value:.9},{day:'20230104',value:1.1}]},
+  {label:'ETF',kind:'benchmark',points:[{day:'20230102',value:1},{day:'20230104',value:1.2}]},
+  {label:'现金',kind:'cash',points:[{day:'20230102',value:1},{day:'20230103',value:1},{day:'20230104',value:1}]}
+];
+function run(data) {
+  const nodes=Object.fromEntries(['comparison-data','comparison-chart','comparison-tip','comparison-legend'].map(id=>[id,new Node(id)]));
+  nodes['comparison-data'].textContent=JSON.stringify(data);
+  vm.runInNewContext(code,{window:{addEventListener(){}},document:{getElementById:id=>nodes[id],createElement:tag=>new Node(tag),createElementNS:(_,tag)=>new Node(tag)}});
+  return nodes;
+}
+const nodes=run(series), host=nodes['comparison-chart'], legend=nodes['comparison-legend'];
+assert.equal(legend.children.length,3);
+assert.equal(host.children[0].children.filter(n=>n.tag==='path').length,3);
+const etf=host.children[0].children.find(n=>n.tag==='path'&&n.attrs['data-series']==='ETF');
+assert.equal((etf.attrs.d.match(/M/g)||[]).length,2);
+host.onkeydown({key:'ArrowLeft',preventDefault(){}});
+assert.match(nodes['comparison-tip'].textContent,/2023-01-03/);
+assert.match(nodes['comparison-tip'].textContent,/ETF：当日数据缺失/);
+for(const label of legend.children){const input=label.children[0];input.checked=false;input.handlers.change();}
+assert.equal(host.children.length,0);assert.equal(host.onkeydown,null);assert.match(host.textContent,/选择至少一条/);
+legend.children[0].children[0].checked=true;legend.children[0].children[0].handlers.change();
+assert.equal(host.children[0].children.filter(n=>n.tag==='path').length,1);
+for (const bad of [
+  [{...series[0],points:[{day:'20230230',value:1}]}],
+  [{...series[0],points:[{day:'20230102',value:2}]}],
+  [{...series[0],points:[{day:'20230102',value:1},{day:'20230102',value:1.1}]}],
+  [series[0],{...series[1],points:[{day:'20230103',value:1},{day:'20230104',value:1.2}]}]
+]) assert.match(run(bad)['comparison-chart'].textContent,/无效/);
+'''
+        subprocess.run(['node','-e',script,str(ROOT/'qmt/benchmark-ui.js')],check=True,capture_output=True,text=True)
 
 
 if __name__=='__main__':unittest.main()

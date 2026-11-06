@@ -237,7 +237,11 @@ class Ledger:
             self.db.execute('BEGIN IMMEDIATE')
             for symbol,events in events_by_symbol.items():
                 for event in events:
-                    if event['pay_date'] <= self.account('paper')['start_date']:
+                    stock_only=event.get('event_kind')=='stock_only'
+                    if stock_only and (dec(event['cash_div_tax'])!=0 or event.get('pay_date') is not None or dec(event['stk_div'])<=0):
+                        raise AppError('纯送转事件的现金或股份字段矛盾，暂停入账。')
+                    effective_day=event['ex_date'] if stock_only else event['pay_date']
+                    if effective_day <= self.account('paper')['start_date']:
                         continue
                     if event['ex_date']>day:
                         continue

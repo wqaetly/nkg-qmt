@@ -1,7 +1,7 @@
 import unittest
 from decimal import Decimal
 
-from qmt.backtest import metrics, simulate
+from qmt.backtest import metrics, simulate, period_diagnostics
 from qmt.config import AppError, load_config
 
 
@@ -19,7 +19,7 @@ def inputs():
     data={'sessions':DAYS,'universe_as_of':DAYS[0],'bars':{CODE:{day:bar() for day in DAYS}},
           'industries':{CODE:'虚构行业'},'dividends':{}}
     signals={DAYS[0]:[{'symbol':CODE,'reference_price':'9','known_on':DAYS[0],'reason':'虚构测试信号'}]}
-    cfg={**load_config(),'slippage_bps':0}
+    cfg={**load_config(),'slippage_bps':0,'paper_cash':'10000','paper_max_position':'2000','paper_max_sector':'4000'}
     return data,signals,cfg
 
 
@@ -29,6 +29,25 @@ def dividend():
 
 
 class BacktestTests(unittest.TestCase):
+    def test_new_capital_supports_twenty_slots_without_rewriting_legacy_fixture(self):
+        data,signals,_=inputs();cfg={**load_config(),'slippage_bps':0}
+        for i in range(1,26):
+            code=f'600{i:03d}.SH'
+            data['bars'][code]={d:bar('10') for d in DAYS};data['industries'][code]=f'行业{i//4}'
+        signals[DAYS[0]]=[{'symbol':code,'reference_price':'10','known_on':DAYS[0]} for code in data['bars']]
+        result=simulate(data,signals,cfg,max_holdings=20)
+        self.assertEqual(Decimal(result['initial_cash']),Decimal('100000'))
+        positions=result['equity_curve'][-1]['positions']
+        self.assertEqual(len(positions),20)
+        self.assertTrue(all(q==400 for q in positions.values()))
+        self.assertGreaterEqual(Decimal(result['equity_curve'][-1]['cash']),Decimal('10000'))
+        self.assertEqual(result['assumptions']['max_position'],'5000.00')
+        with self.assertRaises(AppError):simulate(data,signals,cfg,max_holdings=21)
+
+    def test_uncertain_input_cannot_be_treated_as_no_dividend(self):
+        data,signals,cfg=inputs();data['errors']={CODE:'付款日未知'}
+        with self.assertRaisesRegex(AppError,'未生成模拟收益'):simulate(data,signals,cfg)
+
     def test_signal_executes_next_day_and_lot_uses_signal_price(self):
         data,signals,cfg=inputs()
         data['bars'][CODE]['20200131']=bar('4')
@@ -145,6 +164,38 @@ class BacktestTests(unittest.TestCase):
         self.assertAlmostEqual(result['cagr'],1.1**(365.2425/366)-1)
         self.assertEqual(result['annual_returns']['2020']['return'],-.2)
         self.assertEqual(result['annual_returns']['2021']['return'],.375)
+
+    def test_annual_period_uses_previous_year_close_and_excludes_earlier_fees(self):
+        curve=[{'day':'20191231','equity':'10000','exposure':0},
+               {'day':'20200102','equity':'9000','exposure':.5},
+               {'day':'20201231','equity':'11000','exposure':.5},
+               {'day':'20210104','equity':'8800','exposure':0}]
+        trades=[{'trade_date':day,'price':'10','quantity':100,'fee':'5'} for day in ('20191231','20200102','20210104')]
+        result=period_diagnostics(curve,trades)
+        first,last=result['annual']
+        self.assertEqual(first['year'],2020)
+        self.assertAlmostEqual(first['metrics']['total_return'],.1)
+        self.assertAlmostEqual(first['metrics']['max_drawdown'],-.1)
+        self.assertEqual(first['metrics']['costs'],'5')
+        self.assertEqual(last['start'],'20201231')
+        self.assertAlmostEqual(last['metrics']['total_return'],-.2)
+        self.assertEqual(result['rolling_three_year']['windows'],0)
+
+    def test_three_year_windows_need_full_history_and_report_all_signs(self):
+        from datetime import datetime,timedelta
+        first=datetime(2015,1,1);last=datetime(2019,1,31)
+        curve=[]
+        for i in range((last-first).days+1):
+            day=(first+timedelta(days=i)).strftime('%Y%m%d')
+            value='10000' if day<'20180101' else '8000'
+            curve.append({'day':day,'equity':value,'exposure':0})
+        result=period_diagnostics(curve,[])
+        self.assertEqual(result['rolling_three_year']['windows'],13)
+        self.assertEqual(result['rolling_three_year']['positive_fraction'],0)
+        self.assertEqual(result['rolling_windows'][0]['start'],'20150131')
+        self.assertEqual(result['rolling_windows'][0]['end'],'20180131')
+        self.assertLess(result['rolling_three_year']['max_cagr'],0)
+        with self.assertRaises(AppError):period_diagnostics(curve[::-1],[])
 
 
 if __name__=='__main__':unittest.main()

@@ -8,7 +8,7 @@ from .context import safe_url
 from .selection import automatic_path
 
 
-EXPERIMENT_STATES={'diagnostic':'仅诊断，待验证','running':'检验中','pending':'待运行','failed':'检验未完成','blocked':'数据待补齐','complete':'历史实验完成'}
+EXPERIMENT_STATES={'diagnostic':'仅诊断，待验证','running':'检验中','pending':'待运行','failed':'检验未完成','blocked':'输入待核实','complete':'历史实验完成'}
 
 
 def esc(value):
@@ -48,6 +48,49 @@ def percent(value):
         return '—'
 
 
+def comparison_chart(backtest):
+    series=backtest.get('comparison_series',[])
+    if not series:
+        return '<p class="muted">比较曲线待取数，缺少数据时不绘制替代走势。</p>'
+    missing_strategy='' if any(line.get('kind')=='strategy' for line in series) else '<p class="notice">本区间策略结果尚不可用。现金与 ETF 只作参照，不能把现金线当作策略收益或已通过验证。</p>'
+    encoded=json.dumps(series,ensure_ascii=False).replace('<','\\u003c').replace('>','\\u003e').replace('&','\\u0026')
+    return f'''<section class="comparison-panel"><h3>历史资产走势 · 起点 = 1</h3>{missing_strategy}<div id="comparison-legend" class="comparison-legend" aria-label="显示比较曲线"></div>
+    <div id="comparison-chart" class="comparison-chart" tabindex="0" aria-label="历史资产比较；左右方向键查看日期"></div><p id="comparison-tip" class="chart-tip" aria-live="polite"></p>
+    <p class="muted">策略净资产、ETF 复权价格和现金分别计算；ETF 不是可成交账本，费用及分红处理口径可能不同。图形只表示历史记录，不外推目标收益。</p>
+    <script type="application/json" id="comparison-data">{encoded}</script></section>'''
+
+
+def coverage_panel(coverage):
+    if not coverage:
+        return ''
+    counts=table(['开始日期','结束日期','交易日','历史股票数','原始行情条数','估值条数'],[
+        [coverage.get(key) for key in ('start','end','sessions','stocks','price_rows','valuation_rows')]])
+    errors=coverage.get('input_errors',{})
+    issues=table(['代码','输入疑点'],list(errors.items())) if errors else '<p class="muted">本次未记录输入错误；这不代表公司研究或策略收益已获验证。</p>'
+    return f'''<details class="research-results" id="data-coverage"><summary>历史数据覆盖与取数质量 · 输入疑点 {len(errors)} 只</summary>{counts}
+    <p class="muted">输入疑点表示数据或历史口径需要复核，不是股票亏损。记录条数只说明取得的数据量，不能代替逐项质量核查。没有策略曲线不代表现金策略已验证。</p>{issues}</details>'''
+
+
+def period_diagnostics_panel(data):
+    annual=data.get('annual',[])
+    rolling=data.get('rolling_three_year',{})
+    rolling_keys=('min_cagr','median_cagr','max_cagr','positive_fraction')
+    has_rolling=(isinstance(rolling.get('windows'),int) and rolling['windows']>0
+                 and all(isinstance(rolling.get(key),(int,float)) and math.isfinite(rolling[key]) for key in rolling_keys)
+                 and rolling['min_cagr']<=rolling['median_cagr']<=rolling['max_cagr'] and 0<=rolling['positive_fraction']<=1)
+    if not annual and not has_rolling:
+        return ''
+    yearly=table(['年度 / 实际区间','区间收益','最大回撤','平均仓位','成交笔数','费用 / 元'],[
+        [f"{item['year']} · {item['start']}—{item['end']}",percent(item.get('metrics',{}).get('total_return')),
+         percent(item.get('metrics',{}).get('max_drawdown')),percent(item.get('metrics',{}).get('average_exposure')),
+         item.get('metrics',{}).get('trade_count'),number(item.get('metrics',{}).get('costs'))] for item in annual]) if annual else ''
+    summary=table(['完整三年窗口数','最低年化','中位年化','最高年化','正收益窗口占比'],[
+        [rolling['windows'],*[percent(rolling[key]) for key in rolling_keys]]]) if has_rolling else ''
+    return f'''<details class="research-results" id="period-diagnostics"><summary>逐年收益与滚动三年</summary><p>{esc(data.get('label',''))}</p>
+    {yearly}{'<p class="muted">年度表按列出的实际起止日计算区间收益；最后一年可能尚未结束，不能当作完整年度收益。</p>' if annual else ''}
+    {summary if has_rolling else ''}{'<p class="muted">滚动三年统计汇总同一条历史资产曲线的不同窗口。重叠窗口不是独立样本，正收益占比不是未来盈利概率。</p>' if has_rolling else ''}</details>'''
+
+
 def research_panel(research, backtest, chart_symbols=()):
     if not research and not backtest:
         return ''
@@ -71,10 +114,18 @@ def research_panel(research, backtest, chart_symbols=()):
         <td>{esc(dimensions[0])}</td><td>{esc(dimensions[1])}</td><td>{percent(stock.get('estimated_yield'))}</td><td>{esc(stock.get('state','待核实'))}</td>
         <td>{button}<details><summary>研究依据</summary><p>{esc(stock.get('reason'))}</p>{''.join(evidence)}{sources}</details></td></tr>''')
     runs=backtest.get('runs',[])
-    comparisons=table(['实验 / 区间','年化收益','总收益','最大回撤','说明'],[
+    comparisons=table(['实验 / 区间','年化收益','总收益','最大回撤','平均仓位','成交笔数','费用 / 元','说明'],[
         [run.get('label','历史实验'),percent(run.get('metrics',{}).get('cagr')),
          percent(run.get('metrics',{}).get('total_return')),percent(run.get('metrics',{}).get('max_drawdown')),
+         percent(run.get('metrics',{}).get('average_exposure')),run.get('metrics',{}).get('trade_count'),number(run.get('metrics',{}).get('costs')),
          run.get('message',EXPERIMENT_STATES.get(run.get('status'),run.get('status','')))] for run in runs]) if runs else '<p class="muted">尚无可展示的历史回测结果。</p>'
+    diagnostics=backtest.get('diagnostics',{})
+    diagnoses=''
+    if diagnostics:
+        states='；'.join(f'{state} {count} 次' for state,count in diagnostics.get('states',{}).items())
+        reasons=table(['未通过 / 未成交原因','次数'],[[r.get('reason'),r.get('count')] for r in diagnostics.get('reasons',[])])
+        diagnoses=f'''<details class="research-results"><summary>未通过筛选与未成交原因</summary><p>共 {esc(diagnostics.get('evaluations'))} 次公司 / 时点评估。{esc(states)}</p>
+        <p class="muted">次数不等于股票数量。数据不足、未达到价格要求和资金不够买一手是不同原因；不能为了产生交易把它们视为通过。</p>{reasons}</details>'''
     limitations=research.get('limitations',[])+backtest.get('limitations',[])
     notes=''.join(f'<li>{esc(note)}</li>' for note in dict.fromkeys(limitations))
     backtest_state=backtest.get('status') or research.get('backtest',{}).get('status') or '待运行'
@@ -86,7 +137,7 @@ def research_panel(research, backtest, chart_symbols=()):
     <div class="filters"><label>搜索全部研究股票<input id="research-search" type="search" placeholder="公司、代码、行业或待核实问题"></label><span class="muted" id="research-count" aria-live="polite"></span></div>
     <p class="research-table-hint muted">表格可左右滑动，右侧查看研究依据与 K 线。</p><div class="table-scroll"><table id="research-table"><thead><tr><th>公司</th><th>估值</th><th>流动性</th><th>情景股息率</th><th>分红 / 综合状态</th><th>查看</th></tr></thead><tbody>{''.join(rows)}</tbody></table></div>
     <p id="research-empty" class="muted" hidden>没有匹配的研究对象。</p><div class="research-pagination"><button id="research-prev" type="button">上一页</button><span id="research-page" aria-live="polite"></span><button id="research-next" type="button">下一页</button></div>
-    <details class="research-results"><summary>历史实验与验证边界</summary><p>{esc(message)}</p>{comparisons}<ul>{notes}</ul><p class="muted">单个区间超过 10% 不代表目标已验证；还需独立区间、交易成本、退市与数据时点检查。历史结果不能保证未来收益。</p></details></section>'''
+    {comparison_chart(backtest) if backtest else ''}{coverage_panel(backtest.get('coverage',{}))}{diagnoses}{period_diagnostics_panel(backtest.get('period_diagnostics',{})) if backtest.get('status')!='blocked' else ''}<details class="research-results"><summary>历史实验指标与验证边界</summary><p>{esc(message)}</p>{comparisons}<ul>{notes}</ul><p class="muted">平均仓位指每天投资市值占总资产比例的平均值；现金也计入收益分母。单个区间超过 10% 不代表目标已验证；还需独立区间、交易成本、退市与数据时点检查。历史结果不能保证未来收益。</p></details></section>'''
 
 
 def automatic_panel(data):
@@ -107,7 +158,8 @@ def automatic_panel(data):
     return f'''<section class="panel"><div class="section-title"><h2>自动策略模拟 · {esc(data['day'])}</h2><span class="pill">真实行情 · 虚拟资金</span></div>
     <p>已检查 {len(data['assessments'])} 家，{len(qualified)} 家满足买入价格条件。{'休市日：只更新结算与估值，不生成新订单。' if data.get('closed_market') else '每个交易日结算旧订单并检查新订单，月度固定目标股数；允许空仓。'}</p>
     <div class="account-stats"><div><small>自动模拟总资产</small><strong>¥ {number(equity)}</strong></div><div><small>成立以来税前模拟变动</small><strong>{profit:.2f}%</strong></div><div><small>同期红利 ETF 价格复权变动</small><strong>{benchmark_text}</strong></div><div><small>累计模拟成交</small><strong>{len(data.get('chart_fills',[]))} 笔</strong></div></div>
-    <p class="muted">起点 {esc(account['account']['start_date'])} 收盘；基准 515180.SH。ETF 比较未扣投资者交易费用；模拟分红税前、未自动再投资。首日都是 0%，不能据此比较收益优劣。{esc(data.get('benchmark_error') or '')}</p>
+    <p class="muted">本账本初始虚拟本金 ¥{number(account['account']['initial_cash'])} · 持股上限 {esc(data['rules'].get('max_holdings'))} 只 · 现金底仓 {percent(data['rules'].get('cash_reserve'))}。持股上限与每页展示数量是两回事。</p>
+    <p class="muted">起点 {esc(account['account']['start_date'])} 收盘；基准 {esc(data['rules'].get('benchmark'))}。ETF 比较未扣投资者交易费用；模拟分红税前、未自动再投资。首日都是 0%，不能据此比较收益优劣。{esc(data.get('benchmark_error') or '')}</p>
     <h3>当前观察名单中满足条件的候选及资金分配</h3>{picks if visible else '<p class="empty">当前观察名单无满足全部条件的候选；完整结果见折叠摘要。</p>'}
     <p class="muted">机械盈利代理 = 近三年较低口径利润中位数、最近年度较低利润、TTM 归母、TTM 扣非四者取小；历史派息率是实验假设，不是公司承诺。未自动核实公告全文、业务与特别分红，不能将本结果用于实盘研究确认。</p>
     <details><summary>查看全部初筛原因与规则</summary>{screening}<pre class="analysis">{esc(json.dumps(data['rules'],ensure_ascii=False,indent=2))}</pre></details></section>'''
@@ -154,7 +206,7 @@ def render(workspace, ledger, report, status=None):
     automatic=json.loads(auto_file.read_text(encoding='utf-8')) if auto_file.exists() else {}
     if automatic.get('day')!=report.get('as_of') or automatic.get('rules',{}).get('version')!=report.get('strategy_version'):
         automatic={}
-    focus=automatic.get('focus_symbols',[r['symbol'] for r in report.get('rows',[])[:5]])
+    focus=automatic.get('focus_symbols',[r['symbol'] for r in report.get('rows',[])[:5]])[:5]
     details = []
     for row in report.get("rows",[]):
         if row['symbol'] not in focus:
@@ -209,6 +261,7 @@ def render(workspace, ledger, report, status=None):
     style = (ROOT/'qmt/style.css').read_text(encoding='utf-8')
     chart_script = (ROOT/'qmt/chart.js').read_text(encoding='utf-8')
     research_script = (ROOT/'qmt/research-ui.js').read_text(encoding='utf-8')
+    benchmark_script = (ROOT/'qmt/benchmark-ui.js').read_text(encoding='utf-8')
     page = f'''<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>NKG · 红利研究工作台</title><style>{style}</style></head>
     <body><main><header><a class="brand" href="#">NKG<span> / DIVIDEND LAB</span></a><span class="local">● 本地研究 · 人工执行</span></header>
     <section class="hero"><div><p class="eyebrow">RESEARCH FIRST, EXECUTION SECOND</p><h1>先看分红能否持续，<br>再等价格满足假设。</h1><p>从沪深主板寻找低估值、持续高股息与强流动性，保留反对证据与资料缺口。<br>研究、模拟、手动成交，分开记录。</p></div><div class="date-card"><small>行情截至</small><strong>{esc(report.get('as_of','尚未运行'))}</strong><span>{esc(source)} · 市场快照 {esc(report.get('pool_date','—'))}</span><span>生成于 {esc(report.get('generated_at','—'))}</span></div></section>
@@ -217,10 +270,10 @@ def render(workspace, ledger, report, status=None):
     {chart_panel(workspace,report,report.get('demo_operations',{}) if demo else automatic,research)}
     {('<details class="panel account-fold"><summary>当日模拟账户与订单检查</summary>'+automatic_panel(automatic)+'</details>') if research and not demo else automatic_panel(automatic) if not demo else ''}
     <section class="metrics"><div><small>财报研究覆盖</small><strong>{report.get('covered',0)}<i> / {report.get('pool_size',0)}</i></strong><span>主板 {report.get('universe_count',0)} 家，财报批次不代表全市场</span></div><div><small>待核实 / 观察</small><strong>{sum(r['status'] in ('待核实','观察') for r in rows)}</strong><span>资料不齐时不生成价格结论</span></div><div><small>排除</small><strong>{sum(r['status']=='排除' for r in rows)}</strong><span>保留具体原因，避免只看成功案例</span></div><div><small>可进一步评估</small><strong>{sum(r['status']=='可进一步评估' for r in rows)}</strong><span>满足研究条件 ≠ 自动买入</span></div></section>
-    <section class="panel"><div class="section-title"><h2>重点观察 · 最多 5 只</h2><span class="muted">优先持仓与关注名单，其次满足规则的候选；观察不等于买入</span></div><div class="filters"><label>在观察名单中查找<input id="search" type="search" placeholder="公司、代码或行业"></label><label>研究状态<select id="status"><option value="">全部状态</option><option>待核实</option><option>观察</option><option>排除</option><option>可进一步评估</option></select></label></div>
+    <section class="panel"><div class="section-title"><h2>重点财报详情 · 当前展示 {len(details)} 只</h2><span class="muted">{'最多展示 5 只重点详情；完整研究池可在上方翻页' if research else '重点详情不代表持股上限；观察不等于买入'}</span></div><div class="filters"><label>在重点详情中查找<input id="search" type="search" placeholder="公司、代码或行业"></label><label>研究状态<select id="status"><option value="">全部状态</option><option>待核实</option><option>观察</option><option>排除</option><option>可进一步评估</option></select></label></div>
     <div id="candidates">{''.join(details) or '<p class="empty">运行 daily 获取候选池与数据。</p>'}</div><p id="no-result" hidden>没有匹配的候选。</p></section>
     {''.join(accounts)}<footer><strong>工作台边界</strong><p>参考价基于正常化盈利与派息假设，税前，不是内在价值。模拟使用下一交易日开盘加不利滑点，含估计佣金与卖出印花税；不保证实际成交。现金分红按登记日资格记应收、派息日入账；个人股息税及送转股需另核对。历史实验不能证明策略未来收益或实盘表现。</p><p>密钥仅保存在本地配置。研究请求只包含公司公开数据，不上传账本。报告含个人记账信息时请勿公开分享。</p></footer></main>
-    <script>const search=document.querySelector('#search'),status=document.querySelector('#status');function filter(){{let n=0;document.querySelectorAll('.candidate').forEach(el=>{{const visible=el.dataset.search.toLowerCase().includes(search.value.toLowerCase())&&(!status.value||el.dataset.status===status.value);el.hidden=!visible;if(visible)n++;}});document.querySelector('#no-result').hidden=n>0;}}search.addEventListener('input',filter);status.addEventListener('change',filter);</script><script>{chart_script}</script><script>{research_script}</script></body></html>'''
+    <script>const search=document.querySelector('#search'),status=document.querySelector('#status');function filter(){{let n=0;document.querySelectorAll('.candidate').forEach(el=>{{const visible=el.dataset.search.toLowerCase().includes(search.value.toLowerCase())&&(!status.value||el.dataset.status===status.value);el.hidden=!visible;if(visible)n++;}});document.querySelector('#no-result').hidden=n>0;}}search.addEventListener('input',filter);status.addEventListener('change',filter);</script><script>{chart_script}</script><script>{research_script}</script><script>{benchmark_script}</script></body></html>'''
     path = workspace/'dashboard.html'
     tmp = path.with_suffix('.tmp')
     tmp.write_text(page,encoding='utf-8')

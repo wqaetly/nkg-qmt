@@ -269,7 +269,7 @@ class IntegrationTests(unittest.TestCase):
             path=create_demo(workspace,load_config())
             page=path.read_text(encoding='utf-8')
             self.assertIn('虚构演示数据',page)
-            self.assertIn('10044.00'.replace('10044','10,044'),page)
+            self.assertIn(f"{Decimal(load_config()['paper_cash'])+44:,.2f}",page)
             ledger=Ledger(workspace/'ledger.sqlite3',load_config())
             report=json.loads((workspace/'screen.json').read_text(encoding='utf-8'))
             report['rows'][0]['name']='<script>alert(1)</script>'

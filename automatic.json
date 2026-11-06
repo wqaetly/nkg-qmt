@@ -1,6 +1,6 @@
 {
-  "version": "value-dividend-v2",
-  "max_holdings": 5,
+  "version": "value-dividend-v3",
+  "max_holdings": 20,
   "cash_reserve": "0.10",
   "entry_yield": "0.05",
   "exit_yield": "0.03",

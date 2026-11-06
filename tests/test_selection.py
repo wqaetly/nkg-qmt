@@ -90,7 +90,7 @@ class SelectionTests(unittest.TestCase):
         account={'positions':{},'plans':[]}
         rows=[{'symbol':'600001.SH','state':'待数据核实'},{'symbol':'600002.SH','state':'满足价格条件','estimated_yield':'.06'}]
         self.assertEqual(focus_symbols(account,rows,watchlist=['600001.SH']),['600001.SH','600002.SH'])
-        self.assertEqual(automatic_path(Path('data')),Path('data/auto/value-dividend-v2'))
+        self.assertEqual(automatic_path(Path('data')),Path('data/auto/value-dividend-v3'))
 
     def test_missing_held_assessment_does_not_create_sell(self):
         row,_=fixture();cfg=load_config();ledger=Ledger(':memory:',cfg)

@@ -80,7 +80,7 @@ def update_ledger(workspace, ledger, report):
         events[symbol] = implemented_dividends(dossier["data"]["dividend"],day)
     for symbol,items in events.items():
         for event in items:
-            if event['pay_date']>ledger.account('paper')['start_date'] and event["ex_date"]<=day and dec(event["stk_div"])!=0 and (
+            if (event.get('pay_date') or event['ex_date'])>ledger.account('paper')['start_date'] and event["ex_date"]<=day and dec(event["stk_div"])!=0 and (
                     ledger.positions("paper",event["record_date"]).get(symbol,0) or
                     any(p["symbol"]==symbol and p["execute_date"]<=event["record_date"] for p in pending)):
                 raise AppError("持仓/计划涉及送转股，需处理股本变动后再继续模拟。")
@@ -89,7 +89,7 @@ def update_ledger(workspace, ledger, report):
         start = min(p["execute_date"] for p in pending if p["symbol"]==symbol)
         bars[symbol] = client.bars(symbol,start,day)
     # Settle chronologically so a later cash dividend cannot fund an earlier purchase.
-    dates = sorted({p["execute_date"] for p in pending} | {e["pay_date"] for v in events.values() for e in v if e["pay_date"]<=day} | {day})
+    dates = sorted({p["execute_date"] for p in pending} | {e["pay_date"] for v in events.values() for e in v if e.get("pay_date") and e["pay_date"]<=day} | {day})
     for date in dates:
         ledger.dividends(events,date)
         ledger.settle_paper(date,bars)

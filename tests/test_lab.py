@@ -5,7 +5,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from qmt.config import AppError, atomic_json
-from qmt.experiment import historical_name, prepare_experiment, EXPERIMENT
+from qmt.experiment import historical_name, prepare_experiment, EXPERIMENT, LONG_EXPERIMENT, history_bounds, historical_input_issues, protocol
 from qmt.lab import research_pool, run_lab
 from qmt.selection import automatic_path
 
@@ -23,6 +23,17 @@ def pool_inputs():
 
 
 class LabTests(unittest.TestCase):
+    def test_known_historical_industry_conflict_and_end_date_are_recorded(self):
+        self.assertIn('600882.SH',historical_input_issues(['600882.SH'],'20141231','20261106'))
+        self.assertEqual(historical_input_issues(['600882.SH'],'20221230','20261106'),{})
+        self.assertEqual(historical_input_issues(['600001.SH'],'20141231','20261106'),{})
+        self.assertNotEqual(protocol({},LONG_EXPERIMENT,'20261106'),protocol({},LONG_EXPERIMENT,'20261109'))
+
+    def test_long_history_fetches_predecision_financials_and_estimates(self):
+        self.assertEqual(history_bounds(LONG_EXPERIMENT),(2009,'20120101','20141101'))
+        self.assertEqual(history_bounds(EXPERIMENT),(2017,'20200101','20221031'))
+        self.assertNotEqual(LONG_EXPERIMENT['version'],EXPERIMENT['version'])
+
     def test_twenty_stocks_separate_from_affordability_and_order_permission(self):
         r,a=pool_inputs();result=research_pool(r,a)
         self.assertEqual(len(result['stocks']),20)

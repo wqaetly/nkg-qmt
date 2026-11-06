@@ -3,6 +3,8 @@ import hashlib
 import json
 from datetime import datetime
 from decimal import Decimal, ROUND_CEILING, ROUND_FLOOR
+from bisect import bisect_right
+from statistics import median
 
 from .config import AppError, date_key, dec, money, symbol_key
 from .ledger import Ledger
@@ -41,14 +43,48 @@ def metrics(curve, trades, initial_cash):
                               for year,v in years.items()}}
 
 
+def period_diagnostics(curve, trades):
+    """Fixed-path calendar years and overlapping three-year windows, not retraining."""
+    days=[date_key(p['day']) for p in curve]
+    if len(days)<2 or days!=sorted(set(days)):
+        raise AppError('稳定性诊断需要至少两个不重复的递增日期。')
+    annual=[]
+    for year in sorted({day[:4] for day in days[1:]}):
+        indices=[i for i,day in enumerate(days) if i>0 and day[:4]==year]
+        first,last=indices[0],indices[-1]
+        section=curve[first-1:last+1]
+        fills=[t for t in trades if days[first]<=t['trade_date']<=days[last]]
+        annual.append({'year':int(year),'start':days[first-1],'end':days[last],
+                       'metrics':metrics(section,fills,section[0]['equity'])})
+    windows=[]
+    for last,day in enumerate(days):
+        if last+1<len(days) and day[:6]==days[last+1][:6]:continue
+        end=datetime.strptime(day,'%Y%m%d')
+        # February 29 maps to February 28 when the earlier year is not leap.
+        try:target=end.replace(year=end.year-3)
+        except ValueError:target=end.replace(year=end.year-3,day=28)
+        first=bisect_right(days,target.strftime('%Y%m%d'))-1
+        if first<0:continue
+        value=metrics(curve[first:last+1],[],curve[first]['equity'])['cagr']
+        windows.append({'start':days[first],'end':day,'cagr':value})
+    values=[w['cagr'] for w in windows]
+    return {'annual':annual,'rolling_three_year':{'windows':len(values),
+        'min_cagr':min(values) if values else None,'median_cagr':median(values) if values else None,
+        'max_cagr':max(values) if values else None,
+        'positive_fraction':sum(v>0 for v in values)/len(values) if values else None},
+        'rolling_windows':windows}
+
+
 def _inputs(data, signals, max_holdings):
+    if data.get('errors'):
+        raise AppError('历史输入尚未核实，未生成模拟收益：'+'；'.join(f'{code} {reason}' for code,reason in data['errors'].items()))
     sessions = data['sessions']
     if len(sessions)<2 or sessions!=sorted(set(sessions)):
         raise AppError('回测至少需要两个严格递增且不重复的交易日。')
     for day in sessions:
         date_key(day)
-    if type(max_holdings) is not int or not 1<=max_holdings<=5:
-        raise AppError('回测持仓数量须为 1—5；研究池数量不等于持仓数量。')
+    if type(max_holdings) is not int or not 1<=max_holdings<=20:
+        raise AppError('回测持仓数量须为 1—20；研究池数量不等于持仓数量。')
     if data.get('universe_as_of',sessions[0])>sessions[0]:
         raise AppError('历史候选池不能来自回测开始之后。')
     bars = {}
@@ -93,10 +129,18 @@ def _inputs(data, signals, max_holdings):
         seen = set()
         dividends[symbol] = []
         for event in events:
-            for key in ('ann_date','imp_ann_date','record_date','ex_date','pay_date'):
+            stock_only=event.get('event_kind')=='stock_only'
+            for key in ('ann_date','imp_ann_date','record_date','ex_date'):
                 date_key(event[key])
+            if stock_only:
+                if dec(event['cash_div_tax'])!=0 or event.get('pay_date') is not None or dec(event['stk_div'])<=0:
+                    raise AppError('纯送转事件不应有现金支付，且须有正股份比例。')
+                if date_key(event['stock_list_date'])<event['ex_date']:
+                    raise AppError('送转股上市日期早于除权日。')
+            else:
+                date_key(event['pay_date'])
             published = max(event['ann_date'],event['imp_ann_date'])
-            if not published<=event['record_date']<event['ex_date']<=event['pay_date']:
+            if not published<=event['record_date']<event['ex_date'] or (not stock_only and event['ex_date']>event['pay_date']):
                 raise AppError('回测分红公告、登记、除息与付款日期关系异常。')
             identity = (event['record_date'],event['ex_date'])
             if identity in seen:
@@ -107,7 +151,7 @@ def _inputs(data, signals, max_holdings):
     return sessions,bars,dividends,snapshots
 
 
-def simulate(data, signals, cfg, initial_cash='10000', max_holdings=5):
+def simulate(data, signals, cfg, initial_cash=None, max_holdings=5):
     """Replay raw daily bars and supplied ranked close-of-day candidate snapshots.
 
     data: sessions, bars[symbol][day] (open/high/low/close/vol/up/down),
@@ -118,6 +162,7 @@ def simulate(data, signals, cfg, initial_cash='10000', max_holdings=5):
     An empty list exits; absent snapshots keep positions. Signals at the last session
     cannot fill. Missing bars for a held/ordered stock and held splits halt.
     """
+    initial_cash=cfg['paper_cash'] if initial_cash is None else initial_cash
     sessions,bars,dividends,snapshots = _inputs(data,signals,max_holdings)
     fee_cfg = {**cfg,'sell_stamp_rate':str(max(dec(cfg['sell_stamp_rate']),Decimal('.001')))}
     ledger = Ledger(':memory:',fee_cfg)
@@ -127,7 +172,7 @@ def simulate(data, signals, cfg, initial_cash='10000', max_holdings=5):
         ledger.db.commit()
         session_index = {day:i for i,day in enumerate(sessions)}
         event_dates = {e[key] for events in dividends.values() for e in events for key in ('ex_date','pay_date')
-                       if sessions[0]<=e[key]<=sessions[-1]}
+                       if e.get(key) and sessions[0]<=e[key]<=sessions[-1]}
         curve = []; skipped = []
         for day in sorted(set(sessions)|event_dates):
             active_events = {s:[e for e in events if day in (e['ex_date'],e['pay_date'])]

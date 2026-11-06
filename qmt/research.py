@@ -5,7 +5,10 @@ from decimal import Decimal, InvalidOperation
 from urllib.parse import urlparse
 
 from vendor.dividend_stock_research.dividend_price import calculate
-from .config import AppError, date_key, dec
+from .config import ROOT, AppError, date_key, dec
+
+
+DISCLOSURES = json.loads((ROOT/'qmt/disclosures.json').read_text(encoding='utf-8'))
 
 
 def disclosed_date(row):
@@ -26,8 +29,9 @@ def statements(rows, as_of):
             if str(old.get("report_type")) != str(row.get("report_type")) and {str(old.get("report_type")),str(row.get("report_type"))} == {"1","4"}:
                 selected[period] = row if str(row["report_type"]) == "4" else old
                 continue
-            if any(old.get(key) is not None and value is not None and old[key] != value for key,value in row.items()):
-                raise AppError(f"{period} 同期财报版本冲突，需核对原文。")
+            conflicts = [key for key,value in row.items() if old.get(key) is not None and value is not None and old[key] != value]
+            if conflicts:
+                raise AppError(f"{period} 同期财报版本冲突（{', '.join(sorted(conflicts))}），需核对原文。")
             selected[period] = {**old, **{k:v for k,v in row.items() if v is not None}}
             continue
         if not old or disclosed_date(row) > disclosed_date(old):
@@ -35,8 +39,25 @@ def statements(rows, as_of):
     return selected
 
 
+def normalize_stock_only(rows, as_of):
+    result=[]
+    for row in rows:
+        correction=next((c for c in DISCLOSURES['stock_only'] if c['available_on']<=as_of and row==c['expected']),None)
+        if correction:
+            result.append({**row,'cash_div_tax':'0','event_kind':'stock_only',
+                           'stock_list_date':correction['stock_list_date'],
+                           'correction_source':correction['source'],'correction_source_pages':correction['pages'],
+                           'correction_available_on':correction['available_on'],'correction_note':correction['note'],
+                           'correction_originals':[dict(row)],
+                           'correction_fingerprint':hashlib.sha256(json.dumps(row,sort_keys=True).encode()).hexdigest()})
+        else:
+            result.append(row)
+    return result
+
+
 def normalize_disclosed_dividends(rows, as_of):
     """One verified provider overlap; unknown conflicts still fail closed."""
+    rows=normalize_stock_only(rows,as_of)
     if as_of<'20230707':
         return rows
     event=[r for r in rows if r.get('ts_code')=='600600.SH' and r.get('record_date')=='20230713' and r.get('div_proc')=='实施']
@@ -56,19 +77,33 @@ def normalize_disclosed_dividends(rows, as_of):
     return [r for r in rows if r not in event]+[normalized]
 
 
-def implemented_dividends(rows, as_of):
+def implemented_dividends(rows, as_of, earliest_period=None):
     events = {}
+    earliest_period=date_key(earliest_period) if earliest_period else f"{int(as_of[:4])-8}0101"
     for row in normalize_disclosed_dividends(rows,as_of):
         if row.get("div_proc") != "实施":
             continue
-        if row.get("end_date", "") < f"{int(as_of[:4])-8}0101":
+        if row.get("end_date", "") < earliest_period:
             continue
         published = max(row.get("ann_date") or "99999999", row.get("imp_ann_date") or "99999999")
         if published > as_of:
             continue
-        for field in ("record_date", "ex_date", "pay_date", "end_date"):
+        for field in ("record_date", "ex_date", "end_date"):
             date_key(row.get(field))
-        if not row["record_date"] < row["ex_date"] <= row["pay_date"]:
+        stock_only=row.get('event_kind')=='stock_only'
+        if stock_only:
+            originals=row.get('correction_originals',[])
+            if len(originals)!=1 or normalize_stock_only(originals,as_of)!=[row]:
+                raise AppError('纯送转事件修正不匹配已核实原始记录。')
+            if (row.get('pay_date') is not None or dec(row.get('cash_div_tax'))!=0 or dec(row.get('stk_div'))<=0
+                    or row.get('correction_available_on','99999999')>as_of or not row.get('correction_fingerprint')):
+                raise AppError('纯送转事件缺少已核实原文依据，不能补造现金派息。')
+            date_key(row.get('stock_list_date'))
+            if row['stock_list_date']<row['ex_date']:
+                raise AppError('送转股上市日期不得早于除权日期。')
+        else:
+            date_key(row.get('pay_date'))
+        if not row["record_date"] < row["ex_date"] or (not stock_only and row['ex_date']>row['pay_date']):
             raise AppError("分红登记、除息、派息日期关系异常。")
         dec(row.get("cash_div_tax"))
         dec(row.get("stk_div"))
@@ -163,6 +198,8 @@ def summarize(dossier, basic, quote):
             row["annual"].append(item)
         if any(item["implemented_dps"] is None for item in row["annual"][:5]):
             row["issues"].append("近五年存在未取得已实施分红的年度，须区分停派、尚未实施和数据缺口")
+        if any(item['implemented_dps'] is not None and dec(item['implemented_dps'])==0 for item in row['annual'][:5]):
+            row['issues'].append('近五年存在已核实零现金分红年度；纯送转不算持续现金股息')
         if row["annual"]:
             newest = row["annual"][0]
             if newest["simple_fcf"] is not None and signed(newest["simple_fcf"]) < 0:

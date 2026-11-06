@@ -36,11 +36,11 @@ def research_pool(report, automatic, count=20):
             'pinned_research':code in watch})
         sectors[row['industry']]+=1
         if len(chosen)==count:break
-    return {'version':'research-cohort-v1','as_of':report['as_of'],'target_count':count,'stocks':chosen,
+    return {'version':'research-cohort-v2','as_of':report['as_of'],'target_count':count,'stocks':chosen,
         'method':'保留指定关注股；其余按全部门槛满足、财务可评估但等待价格、待核实依次研究。同组按机械情景股息率排序；每行业最多三只。排名不抵消风险门禁。',
         'target_cagr':'0.10','target_status':'待验证','source_universe_count':report.get('universe_count'),
         'limitations':['研究名单不是买入清单；不足二十只时不补不合格公司。','今日名单不得用于声称历史选股收益；历史回放需独立重建当时名单。',
-                       '当前模拟本金仍为一万元，最多五只持仓；二十只为研究数量。',
+                       '研究数量不代表实际持仓数量；资金和持仓上限以独立自动模拟账本所示配置为准。',
                        '年化10%为研究目标，尚未达到可验证的策略结论；不保证未来收益。']}
 
 
