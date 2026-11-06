@@ -75,7 +75,9 @@ def period_diagnostics(curve, trades):
         'rolling_windows':windows}
 
 
-def _inputs(data, signals, max_holdings):
+def _inputs(data, signals, max_holdings, *, freeze_policy='portfolio'):
+    if freeze_policy not in ('portfolio', 'position'):
+        raise AppError('未知冻结策略，不能回退为默认规则。')
     if data.get('errors'):
         raise AppError('历史输入尚未核实，未生成模拟收益：'+'；'.join(f'{code} {reason}' for code,reason in data['errors'].items()))
     sessions = data['sessions']
@@ -126,6 +128,8 @@ def _inputs(data, signals, max_holdings):
                 previous_end = end
     snapshots = {}
     for day,snapshot in signals.items():
+        if freeze_policy=='position' and (not isinstance(snapshot,dict) or 'portfolio_freeze' not in snapshot):
+            raise AppError('按持仓冻结模式要求每个信号明确给出 portfolio_freeze。')
         candidates = snapshot.get('candidates') if isinstance(snapshot,dict) else snapshot
         frozen = snapshot.get('freeze',[]) if isinstance(snapshot,dict) else []
         retained = snapshot.get('retain',[]) if isinstance(snapshot,dict) else []
@@ -139,8 +143,15 @@ def _inputs(data, signals, max_holdings):
         if membership is not None and any(not any(window['start']<=day and (window['end'] is None or day<window['end'])
                                                    for window in membership[code]) for code in retained):
             raise AppError('保留股票不在当日有效的历史成员区间内。')
-        if len(set(frozen))!=len(frozen) or any(code not in bars for code in frozen):
+        if any(not isinstance(code,str) for code in frozen) or len(set(frozen))!=len(frozen) or any(code not in bars for code in frozen):
             raise AppError('冻结股票代码重复或缺少行情。')
+        if freeze_policy=='position':
+            portfolio_frozen=snapshot['portfolio_freeze']
+            if (not isinstance(portfolio_frozen,list) or any(not isinstance(code,str) for code in portfolio_frozen)
+                    or len(set(portfolio_frozen))!=len(portfolio_frozen) or not set(portfolio_frozen)<=set(frozen)):
+                raise AppError('portfolio_freeze 须为不重复且属于 freeze 的合法股票代码列表。')
+            for code in portfolio_frozen:
+                symbol_key(code)
         if membership is not None and any(day<membership[code][0]['start'] for code in frozen):
             raise AppError('尚未首次入池的股票不能作为历史冻结持仓。')
         if set(frozen)&{c['symbol'] for c in candidates}:
@@ -155,6 +166,8 @@ def _inputs(data, signals, max_holdings):
                 raise AppError('买入候选不在当日有效的历史成员区间内。')
             dec(candidate['reference_price'],positive=True)
         snapshots[day]={'candidates':candidates,'freeze':frozen}
+        if freeze_policy=='position':
+            snapshots[day]['portfolio_freeze']=list(portfolio_frozen)
         if retained:
             snapshots[day]['retain']=sorted(retained)
     dividends = {}
@@ -186,7 +199,7 @@ def _inputs(data, signals, max_holdings):
     return sessions,bars,dividends,snapshots
 
 
-def simulate(data, signals, cfg, initial_cash=None, max_holdings=5):
+def simulate(data, signals, cfg, initial_cash=None, max_holdings=5, *, freeze_policy='portfolio'):
     """Replay raw daily bars and supplied ranked close-of-day candidate snapshots.
 
     data: sessions, bars[symbol][day] (open/high/low/close/vol/up/down),
@@ -194,14 +207,17 @@ def simulate(data, signals, cfg, initial_cash=None, max_holdings=5):
     Optional universe_membership[symbol]: [{start, end}], with end exclusive.
     signals[day]: [{symbol, reference_price, known_on, reason?}, ...], or
     {candidates: [...], freeze: [symbol,...], retain: [symbol,...]}. Frozen held shares are preserved,
-    count toward caps, and block new buys; frozen unheld names do not block others.
+    count toward caps, and block new buys in the default portfolio policy.
+    The position policy requires explicit portfolio_freeze subsets in every snapshot;
+    only held names in that subset block other buys. All frozen held quantities stay fixed.
+    Frozen unheld names never block others.
     Retain-only held shares keep at most their current quantity within the same monthly
     target budgets. Candidates still rebalance normally; no daily price-driven trimming.
     An empty list exits; absent snapshots keep positions. Signals at the last session
     cannot fill. Missing bars and unverified or fractional held distributions halt.
     """
     initial_cash=cfg['paper_cash'] if initial_cash is None else initial_cash
-    sessions,bars,dividends,snapshots = _inputs(data,signals,max_holdings)
+    sessions,bars,dividends,snapshots = _inputs(data,signals,max_holdings,freeze_policy=freeze_policy)
     fee_cfg = {**cfg,'sell_stamp_rate':str(max(dec(cfg['sell_stamp_rate']),Decimal('.001')))}
     ledger = Ledger(':memory:',fee_cfg)
     try:
@@ -231,6 +247,7 @@ def simulate(data, signals, cfg, initial_cash=None, max_holdings=5):
             next_day = sessions[session_index[day]+1]
             held = ledger.positions('paper')
             frozen = set(snapshots[day]['freeze'])&set(held)
+            blocked = frozen if freeze_policy=='portfolio' else set(snapshots[day]['portfolio_freeze'])&set(held)
             targets = {code:held[code] for code in frozen}; targets_price = {}; sector_values = {}
             for code in frozen:
                 sector=data['industries'][code]
@@ -275,7 +292,7 @@ def simulate(data, signals, cfg, initial_cash=None, max_holdings=5):
                         raise AppError(f'{code} 缺少信号日持仓估值。')
                     price = (dec(prices[code]['close'])*Decimal('.99')).quantize(Decimal('.01'),rounding=ROUND_CEILING) if side=='sell' else targets_price[code]
                     if side=='buy':
-                        if frozen:
+                        if blocked:
                             skipped.append({'day':day,'symbol':code,'reason':'既有持仓资料待核实，保留冻结股数并暂停新增买入'})
                             continue
                         reserved_codes = set(held)|{p['symbol'] for p in ledger.open_plans('paper') if p['side']=='buy'}
@@ -303,7 +320,7 @@ def simulate(data, signals, cfg, initial_cash=None, max_holdings=5):
                 'cash_events':[dict(r) for r in ledger.db.execute('SELECT * FROM cash_events ORDER BY day')],
                 'stock_events':[dict(r) for r in ledger.db.execute('SELECT * FROM stock_events ORDER BY ex_date,reference')],
                 'metrics':metrics(curve,trades,initial_cash),
-                'assumptions':{'max_holdings':max_holdings,'max_position':cfg['paper_max_position'],
+                'assumptions':{'freeze_policy':freeze_policy,'max_holdings':max_holdings,'max_position':cfg['paper_max_position'],
                                'max_sector':cfg['paper_max_sector'],'cash_reserve':'0.10','fee_config':fee_cfg,
                                'signal_timing':'收盘后生成目标，仅下一交易日开盘按限价与不利滑点尝试；不成交不事后追单',
                                'tax_note':'固定卖出印花税至少 0.1% 作为成本压力假设，不是逐日历史税率；现金分红税前，未扣个人股息税；佣金为估计综合费用',

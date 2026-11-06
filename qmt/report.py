@@ -13,6 +13,7 @@ from .selection import automatic_path
 EXPERIMENT_STATES={'diagnostic':'仅诊断，待验证','running':'检验中','pending':'待运行','failed':'检验未完成','blocked':'输入待核实','complete':'历史实验完成'}
 EARNINGS_BASES={'conservative_minimum':'历史及 TTM 取低','ttm':'最近十二个月取低'}
 ENTRY_MODES={'yield_threshold':'固定股息门槛','yield_rank':'股息排序'}
+FREEZE_POLICIES={'portfolio':'组合停买','position':'按股冻结'}
 
 
 def esc(value):
@@ -60,6 +61,18 @@ def entry_mode_label(protocol):
     return ENTRY_MODES.get(protocol.get('entry_mode','yield_threshold'),'未识别入场方式')
 
 
+def freeze_policy_label(protocol):
+    return FREEZE_POLICIES.get(protocol.get('freeze_policy'),'未记录')
+
+
+def freeze_policy_note(protocol):
+    policy=protocol.get('freeze_policy')
+    note={'portfolio':'有实际持仓待核实时，保持冻结股数及资金、行业占额，暂停组合全部新增买入（含加仓）；其他持仓仍可按规则卖出。',
+          'position':'保持冻股原数量及资金、行业占额，其他通过全部资格者可买入；身份或行业未知仍暂停组合新增买入，缺少持仓估值或未核实权益仍阻断回放。'}.get(
+          policy,'旧归档未记录冻结政策，不能据此推断已按股冻结。')
+    return f'<p id="freeze-policy">历史实验冻结政策：{esc(freeze_policy_label(protocol))}。{esc(note)}日常模拟规则未随此实验改变。</p>'
+
+
 def experiment_history_panel(workspace):
     versions={}
     for path in sorted((workspace/'backtests').glob('*/summary.json')):
@@ -80,12 +93,12 @@ def experiment_history_panel(workspace):
         period=f"¥ {number(cash)} · {coverage.get('start',protocol.get('selection_day','—'))}—{coverage.get('end',summary.get('as_of',protocol.get('replay_end','—')))}"
         cohort=f"{version} · 首次建池 {protocol.get('selection_day','—')} · 累计 {coverage.get('stocks','—')} 只"
         versions[version]=[cohort,period,EXPERIMENT_STATES.get(state,state),percent(metrics.get('cagr')),
-                           percent(metrics.get('average_exposure')),number(metrics.get('costs')),earnings_basis_label(protocol),entry_mode_label(protocol)]
+                           percent(metrics.get('average_exposure')),number(metrics.get('costs')),earnings_basis_label(protocol),entry_mode_label(protocol),freeze_policy_label(protocol)]
     if not versions:
         return ''
-    rows=table(['实验版本 / 首次建池 / 累计股票数','本金 / 回放区间','状态','年化收益','平均仓位','费用 / 元','盈利口径','入场方式'],versions.values())
+    rows=table(['实验版本 / 首次建池 / 累计股票数','本金 / 回放区间','状态','年化收益','平均仓位','费用 / 元','盈利口径','入场方式','冻结政策'],versions.values())
     return f'''<details class="research-results" id="experiment-history"><summary>历次实验对照 · {len(versions)} 个版本</summary>
-    <p class="muted">仅列本工作区保存的各版本预设主方案全期结果；固定门槛旧实验取 5% 主方案，股息排序实验只有一个排序方案。保留旧实验，未混入其他本金工作区。输入阻塞时指标为 —，不是 0% 收益。未声明盈利口径的旧归档按“历史及 TTM 取低”解释；口径变化不是收益验证。建池日期、本金、入场方式和区间不同的结果不能直接视作策略改进。</p>{rows}</details>'''
+    <p class="muted">仅列本工作区保存的各版本预设主方案全期结果；固定门槛旧实验取 5% 主方案，股息排序实验只有一个排序方案。保留旧实验，未混入其他本金工作区。输入阻塞时指标为 —，不是 0% 收益。未声明盈利口径的旧归档按“历史及 TTM 取低”解释；口径变化不是收益验证。未声明冻结政策的旧归档显示“未记录”，不能据此推断已按股冻结。建池日期、本金、入场方式、冻结政策和区间不同的结果不能直接视作策略改进。</p>{rows}</details>'''
 
 
 def comparison_chart(backtest):
@@ -292,6 +305,30 @@ def disclosure_diagnostics_panel(diagnostics):
     return ''.join(panels)
 
 
+def holding_freezes_panel(data):
+    if not isinstance(data,dict) or not data:
+        return ''
+    latest=data.get('latest') or {}
+    blocked='是' if latest.get('portfolio_blocked') is True else '否' if latest.get('portfolio_blocked') is False else '未记录'
+    latest_count=latest.get('held_frozen')
+    held_text=f'{esc(latest_count)} 只' if latest_count is not None else '未记录'
+    current=(f'最近评估日 {esc(latest.get("day"))}：实际冻结持仓 {held_text}；'
+             f'组合暂停买入：{blocked}；买入尝试跳过 {esc(latest.get("buy_skips"))} 次。')
+    if latest_count==0:
+        current+='本期无实际冻结持仓。'
+    rows=[]
+    for item in sorted(data.get('rows',[]),key=lambda item:str(item.get('day','')),reverse=True):
+        exited='否' if item.get('active') is True else '是' if item.get('active') is False else '未记录'
+        rows.append([item.get('day'),item.get('symbol'),item.get('quantity'),number(item.get('market_value')),
+                     percent(item.get('weight')),exited,FREEZE_POLICIES.get(item.get('scope'),'未记录'),item.get('reason')])
+    details=table(['评估日','公司代码','实际股数','冻结持仓市值 / 元','占当日净值','已退研究池','冻结范围','当时原因'],rows) if rows else '<p class="muted">本记录没有实际冻结持仓明细。</p>'
+    return f'''<div id="holding-freezes"><p><strong>历史主方案 · 实际持仓冻结</strong> · 诊断政策：{esc(FREEZE_POLICIES.get(data.get('policy'),'未记录'))}</p>
+    <p class="muted">仅列当期冻结清单与当日实际持仓的交集，不包含未持有的研究对象。冻结持仓仍计入净值、持仓席位及行业占额；市值不是被扣除的现金，也不是冻结造成的亏损。</p>
+    <p id="holding-freezes-latest">{current}</p>
+    <p>月度评估 {esc(data.get('months'))} 次；存在实际冻结持仓 {esc(data.get('frozen_months'))} 个组合月；组合暂停买入 {esc(data.get('portfolio_blocked_months'))} 个组合月；记录买入受阻 {esc(data.get('buy_skip_months'))} 个组合月、{esc(data.get('buy_skips'))} 次买入尝试；冻结明细累计 {esc(data.get('company_months'))} 公司·月。</p>
+    <p class="muted">每行是一家公司在一个评估月的实际持仓状态，同月多只冻结持仓仍只算一个组合月。跳过次数是买入尝试，不是订单、成交或亏损，也不分摊为单只股票的独立影响。最新评估日不等于回放最后估值日；缺失资料或待核实事项不等于已知财务不合格。</p>{details}</div>'''
+
+
 def research_panel(research, backtest, chart_symbols=(), history=''):
     if not research and not backtest and not history:
         return ''
@@ -364,7 +401,7 @@ def research_panel(research, backtest, chart_symbols=(), history=''):
                 pool.get('evaluated_count')] for pool in rebalances])
             pool_table+='<p class="muted">仅在年末重筛候选池，月度评估当期候选；不是每月扫描全市场。实际入池是候选覆盖，不是实际持仓；已检查数使用实验记录，旧记录未保存时显示“—”。未入池候选含条件不满足或排序未选中，不等于财务不合格；年度淘汰原因按公司 / 建池时点计数，同一公司可能重复出现。</p>'
         diagnoses=f'''<details class="research-results" id="research-diagnostics"><summary>建池淘汰、筛选与未成交原因</summary><p>{esc(selection_note)}</p><p>共 {esc(diagnostics.get('evaluations'))} 次公司 / 时点评估。{esc(states)}</p>
-        {funnel}{pool_table}{conflicts}{disclosure_diagnostics_panel(diagnostics)}<p class="muted">建池淘汰按{'公司 / 建池时点' if rebalances else '公司'}计数，筛选按公司 / 时点计数，执行跳过按事件计数，三者不能相加。数据不足、未达到价格要求和资金不够买一手是不同原因；不能为了产生交易把它们视为通过。</p>{reasons}</details>'''
+        {funnel}{pool_table}{holding_freezes_panel(diagnostics.get('holding_freezes'))}{conflicts}{disclosure_diagnostics_panel(diagnostics)}<p class="muted">建池淘汰按{'公司 / 建池时点' if rebalances else '公司'}计数，筛选按公司 / 时点计数，执行跳过按事件计数，三者不能相加。数据不足、未达到价格要求和资金不够买一手是不同原因；不能为了产生交易把它们视为通过。</p>{reasons}</details>'''
     limitations=research.get('limitations',[])+backtest.get('limitations',[])
     notes=''.join(f'<li>{esc(note)}</li>' for note in dict.fromkeys(limitations) if note!=backtest.get('protocol',{}).get('monthly_targets'))
     backtest_state=backtest.get('status') or research.get('backtest',{}).get('status') or '待运行'
@@ -379,16 +416,17 @@ def research_panel(research, backtest, chart_symbols=(), history=''):
                       'ttm':'只取归母 TTM 与扣非 TTM 较低值，不再与历史年度利润取更低值。'}.get(protocol.get('earnings_basis','conservative_minimum'),'协议中的盈利口径无法识别。')
     earnings_note=f'<p id="earnings-basis">历史实验盈利口径：{esc(earnings_label)}。{esc(earnings_formula)}这是机械口径对照，不等同于正常化盈利，也不代表收益已验证。</p>' if backtest else ''
     entry_card=f'<span>入场方式：{esc(entry_mode_label(protocol))}</span>' if backtest else ''
+    freeze_card=f'<span>冻结政策：{esc(freeze_policy_label(protocol))}</span>' if backtest else ''
     entry_note=('<p class="muted" id="entry-mode">历史实验按股息排序：每月末对通过财务、估值、流动性及历史 TTM 股息率至少 3% 初筛的候选，按预计股息率降序分配。最多持仓 20 只，继续受资金和行业上限约束。5% 只作情景计算参考，不作为入场条件或买入限价上限；日常模拟规则未随此实验改变。</p>' if ranked else '')
     target_note=f'<p>回放调仓规则：{esc(protocol["monthly_targets"])}</p>' if protocol.get('monthly_targets') else ''
     message=backtest.get('message') or research.get('backtest',{}).get('message') or research.get('message','')
     return f'''<section class="panel research-lab" id="research-lab"><div class="section-title"><h2>策略研究台</h2><span class="pill">手动运行 · 不启用定时任务</span></div>
-    <div class="research-summary"><div><small>研究目标</small><strong>年化 ≥ 10%</strong><span>待验证，不是收益承诺</span></div><div><small>股票研究池</small><strong>{len(stocks)} / {esc(research.get('target_count',20))}</strong><span>研究对象，不等于持仓数量</span></div><div><small>历史检验状态</small><strong>{esc(backtest_state)}</strong><span>{esc(historical_note)}</span>{holding_note}{earnings_card}{entry_card}</div></div>
+    <div class="research-summary"><div><small>研究目标</small><strong>年化 ≥ 10%</strong><span>待验证，不是收益承诺</span></div><div><small>股票研究池</small><strong>{len(stocks)} / {esc(research.get('target_count',20))}</strong><span>研究对象，不等于持仓数量</span></div><div><small>历史检验状态</small><strong>{esc(backtest_state)}</strong><span>{esc(historical_note)}</span>{holding_note}{earnings_card}{entry_card}{freeze_card}</div></div>
     <p class="muted">研究截至 {esc(research.get('as_of'))} · {esc(research.get('version'))}。{esc(research.get('method',''))}</p>
     <div class="filters"><label>搜索全部研究股票<input id="research-search" type="search" placeholder="公司、代码、行业或待核实问题"></label><span class="muted" id="research-count" aria-live="polite"></span></div>
     <p class="research-table-hint muted">表格可左右滑动，右侧查看研究依据与 K 线。</p><div class="table-scroll"><table id="research-table"><thead><tr><th>公司</th><th>估值</th><th>流动性</th><th>情景股息率</th><th>分红 / 综合状态</th><th>查看</th></tr></thead><tbody>{''.join(rows)}</tbody></table></div>
     <p id="research-empty" class="muted" hidden>没有匹配的研究对象。</p><div class="research-pagination"><button id="research-prev" type="button">上一页</button><span id="research-page" aria-live="polite"></span><button id="research-next" type="button">下一页</button></div>
-    {entry_note}{comparison_chart(backtest) if backtest else ''}{history}{coverage_panel(backtest.get('coverage',{}))}{diagnoses}{period_diagnostics_panel(backtest.get('period_diagnostics',{})) if backtest.get('status')!='blocked' else ''}<details class="research-results"><summary>历史实验指标与验证边界</summary><p>{esc(message)}</p>{earnings_note}{target_note}{comparisons}<ul>{notes}</ul><p class="muted">平均仓位指每天投资市值占总资产比例的平均值；现金也计入收益分母。单个区间超过 10% 不代表目标已验证；还需独立区间、交易成本、退市与数据时点检查。历史结果不能保证未来收益。</p></details></section>'''
+    {entry_note}{comparison_chart(backtest) if backtest else ''}{history}{coverage_panel(backtest.get('coverage',{}))}{diagnoses}{period_diagnostics_panel(backtest.get('period_diagnostics',{})) if backtest.get('status')!='blocked' else ''}<details class="research-results"><summary>历史实验指标与验证边界</summary><p>{esc(message)}</p>{earnings_note}{freeze_policy_note(protocol) if backtest else ''}{target_note}{comparisons}<ul>{notes}</ul><p class="muted">平均仓位指每天投资市值占总资产比例的平均值；现金也计入收益分母。单个区间超过 10% 不代表目标已验证；还需独立区间、交易成本、退市与数据时点检查。历史结果不能保证未来收益。</p></details></section>'''
 
 
 def automatic_panel(data):
