@@ -139,21 +139,20 @@ class DisclosedDataTests(unittest.TestCase):
         # An exact total alone still contains the disclosed special component.
         self.assertEqual(implemented_dividends(originals[:1],'20170703')[0]['ordinary_cash_div_tax'],'0.460')
         # A special component alone is not enough to invent a total row.
-        self.assertEqual(normalize_cash_overlaps(originals[1:],'20170703'),originals[1:])
+        with self.assertRaises(AppError):normalize_cash_overlaps(originals[1:],'20170703')
 
     def test_shenhua_unverified_overlap_and_extra_duplicates_still_fail(self):
         originals=DISCLOSURES['cash_dividend_overlaps'][0]['expected']
         for changes in ({'cash_div_tax':2.6},{'pay_date':'20170711'},{'ann_date':'20170319'},
                         {'extra_source_field':'new schema'}):
             rows=[originals[0],{**originals[1],**changes}]
-            self.assertEqual(normalize_cash_overlaps(rows,'20170703'),rows)
+            with self.assertRaises(AppError):normalize_cash_overlaps(rows,'20170703')
             with self.subTest(changes=changes),self.assertRaises(AppError):
                 implemented_dividends(rows,'20170703')
         rows=originals+[originals[1]]
-        self.assertEqual(normalize_cash_overlaps(rows,'20170703'),rows)
+        with self.assertRaises(AppError):normalize_cash_overlaps(rows,'20170703')
         with self.assertRaises(AppError):implemented_dividends(rows,'20170703')
         unknown=[{**r,'ts_code':'600099.SH'} for r in originals]
-        self.assertEqual(normalize_cash_overlaps(unknown,'20170703'),unknown)
         with self.assertRaises(AppError):implemented_dividends(unknown,'20170703')
 
     def test_shenhua_correction_metadata_cannot_be_forged(self):

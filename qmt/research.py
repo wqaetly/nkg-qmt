@@ -212,16 +212,68 @@ def normalize_stock_only(rows, as_of):
     return result
 
 
+def _visible_cash_event(rows, anchor, as_of):
+    event=[]
+    for row in rows:
+        if (any(row.get(k)!=anchor.get(k) for k in ('ts_code','div_proc'))
+                or not any(row.get(k)==anchor.get(k) for k in ('record_date','ex_date'))):
+            continue
+        known=[date_key(row[k]) for k in ('ann_date','imp_ann_date') if row.get(k)]
+        if known and max(known)>as_of:
+            continue
+        if len(known)!=2:
+            raise AppError('已核实派息事件存在缺少必要公告日期的原始行，不能视为未来披露。')
+        event.append(row)
+    return event
+
+
 def normalize_cash_overlaps(rows, as_of):
+    as_of=date_key(as_of)
+    seen=set()
     for correction in DISCLOSURES['cash_dividend_overlaps']:
-        if correction['available_on']>as_of:
+        available=date_key(correction['available_on'])
+        if available>as_of:
             continue
-        total=correction['expected'][0]
-        event=[r for r in rows if all(r.get(k)==total[k] for k in ('ts_code','record_date','div_proc'))]
-        # Only the verified total and its exact component can be merged.
-        if (total not in event or len(event) not in (1,2) or any(r not in correction['expected'] for r in event)
-                or len({json.dumps(r,sort_keys=True) for r in event})!=len(event)):
+        expected=correction['expected']
+        if not isinstance(expected,list) or len(expected)!=2 or any(not isinstance(r,dict) for r in expected):
+            raise AppError('现金重叠派息登记须包含完整总额和特别组成项两条原始记录。')
+        total=expected[0]
+        keys={(total.get('ts_code'),total.get('div_proc'),k,total.get(k)) for k in ('record_date','ex_date')}
+        if seen & keys:
+            raise AppError('同一现金重叠派息事件存在重复原文登记。')
+        seen.update(keys)
+        event=_visible_cash_event(rows,total,as_of)
+        if not event or (len(event)==1 and event[0].get('event_kind')=='cash_overlap'):
             continue
+        serialize=lambda r:json.dumps(r,sort_keys=True)
+        actual=list(map(serialize,event)); registered=list(map(serialize,expected))
+        # A total alone is sufficient; a component or an unknown revision is not.
+        if (len(set(registered))!=2 or registered[0] not in actual or len(actual) not in (1,2)
+                or len(set(actual))!=len(actual) or any(r not in registered for r in actual)):
+            raise AppError('现金重叠派息缺少已核实总额，或原始记录重复、发生未知修订。')
+        classified={**total,'ordinary_cash_div_tax':correction['ordinary_cash_div_tax'],
+                    'special_cash_div_tax':correction['special_cash_div_tax']}
+        cash,ordinary=_dividend_amounts(classified)
+        symbol_key(total.get('ts_code'))
+        if (total.get('div_proc')!='实施'
+                or any(total.get(k)!=expected[1].get(k) for k in ('ts_code','record_date','ex_date','pay_date','div_proc'))
+                or dec(expected[1].get('cash_div_tax'))!=dec(correction['special_cash_div_tax'])
+                or dec(expected[1].get('stk_div'))!=0):
+            raise AppError('现金重叠派息的总额与特别组成项不属于同一已核实实施事件。')
+        if 'source_sha256' in correction or 'fiscal_components' in correction:
+            proof=_verified_source(correction)
+            if not max(date_key(r.get(k)) for r in expected for k in ('ann_date','imp_ann_date'))<=proof['available_on']<=date_key(total['record_date']):
+                raise AppError('现金重叠派息的原文可用日期与实施记录不一致。')
+        if 'fiscal_components' in correction:
+            components=correction['fiscal_components']
+            if not isinstance(components,list) or len(components)!=1 or not isinstance(components[0],dict):
+                raise AppError('现金重叠派息须对应一个已核实的完整财政年度。')
+            component=components[0]
+            if (date_key(component.get('end_date'))!=total['end_date'] or not total['end_date'].endswith('1231')
+                    or _dividend_amounts(component)!=(cash,ordinary)
+                    or dec(component.get('special_cash_div_tax'))!=dec(correction['special_cash_div_tax'])):
+                raise AppError('现金重叠派息的财政年度或普通、特别组成项与总额不一致。')
+            _distribution_shares(component.get('distribution_shares'))
         originals=sorted((dict(r) for r in event),key=lambda r:r['end_date'])
         normalized={**total,'event_kind':'cash_overlap',
                     'ordinary_cash_div_tax':correction['ordinary_cash_div_tax'],
@@ -229,6 +281,64 @@ def normalize_cash_overlaps(rows, as_of):
                     'correction_source':correction['source'],'correction_source_pages':correction['pages'],
                     'correction_available_on':correction['available_on'],'correction_note':correction['note'],
                     'correction_originals':originals,
+                    'correction_fingerprint':hashlib.sha256(json.dumps(originals,sort_keys=True).encode()).hexdigest()}
+        for field in ('fiscal_components','source_sha256'):
+            if field in correction:
+                normalized[field if field=='fiscal_components' else 'correction_'+field]=json.loads(json.dumps(correction[field]))
+        rows=[r for r in rows if r not in event]+[normalized]
+    return rows
+
+
+def normalize_cash_components(rows, as_of):
+    """One verified FY payment split into ordinary and special vendor rows."""
+    as_of=date_key(as_of)
+    seen=set()
+    for correction in DISCLOSURES.get('cash_dividend_components',[]):
+        if date_key(correction.get('available_on'))>as_of:
+            continue
+        proof=_verified_source(correction)
+        expected=correction.get('expected')
+        components=correction.get('fiscal_components')
+        if (not isinstance(expected,list) or len(expected)!=2 or any(not isinstance(r,dict) for r in expected)
+                or not isinstance(components,list) or len(components)!=1 or not isinstance(components[0],dict)):
+            raise AppError('现金拆项登记须包含普通、特别两条完整原始行和一个财政组成项。')
+        ordinary_row,special_row=expected
+        keys={(ordinary_row.get('ts_code'),ordinary_row.get('div_proc'),k,ordinary_row.get(k)) for k in ('record_date','ex_date')}
+        if seen & keys:
+            raise AppError('同一现金拆项派息事件存在重复原文登记。')
+        seen.update(keys)
+        symbol_key(ordinary_row.get('ts_code'))
+        period=date_key(ordinary_row.get('end_date'))
+        component=components[0]
+        cash,ordinary=_dividend_amounts(component)
+        if (not period.endswith('1231') or date_key(component.get('end_date'))!=period
+                or ordinary_row.get('div_proc')!='实施'
+                or any(ordinary_row.get(k)!=special_row.get(k) for k in ('ts_code','record_date','ex_date','pay_date','div_proc'))
+                or dec(ordinary_row.get('cash_div_tax'),positive=True)!=ordinary
+                or dec(special_row.get('cash_div_tax'),positive=True)!=dec(component.get('special_cash_div_tax'))
+                or 'ordinary_cash_div_tax' not in component or cash!=ordinary+dec(component['special_cash_div_tax'])
+                or dec(special_row.get('stk_div'))!=0):
+            raise AppError('现金拆项的原始角色、财政年度或普通、特别金额不一致。')
+        dec(ordinary_row.get('stk_div'))
+        date_key(special_row.get('end_date'))
+        _distribution_shares(component.get('distribution_shares'))
+        if not (period<=max(date_key(r.get(k)) for r in expected for k in ('ann_date','imp_ann_date'))
+                <=proof['available_on']<=date_key(ordinary_row.get('record_date'))
+                <date_key(ordinary_row.get('ex_date'))<=date_key(ordinary_row.get('pay_date'))):
+            raise AppError('现金拆项的财政年度、公告可用日或实施日期关系无效。')
+        event=_visible_cash_event(rows,ordinary_row,as_of)
+        if not event or (len(event)==1 and event[0].get('event_kind')=='cash_components'):
+            continue
+        serialize=lambda r:json.dumps(r,sort_keys=True)
+        if (len(set(map(serialize,expected)))!=2
+                or sorted(map(serialize,event))!=sorted(map(serialize,expected))):
+            raise AppError('现金拆项原始记录不完整、重复或与已核实公告不一致。')
+        originals=sorted((dict(r) for r in event),key=lambda r:(r['end_date'],serialize(r)))
+        normalized={**ordinary_row,'event_kind':'cash_components','cash_div_tax':str(cash),
+                    'fiscal_components':json.loads(json.dumps(components)),
+                    'correction_source':proof['source'],'correction_source_sha256':proof['source_sha256'],
+                    'correction_source_pages':proof['pages'],'correction_available_on':proof['available_on'],
+                    'correction_note':correction['note'],'correction_originals':originals,
                     'correction_fingerprint':hashlib.sha256(json.dumps(originals,sort_keys=True).encode()).hexdigest()}
         rows=[r for r in rows if r not in event]+[normalized]
     return rows
@@ -277,7 +387,8 @@ def normalize_cash_joint_periods(rows, as_of):
 
 def normalize_disclosed_dividends(rows, as_of):
     """Source-verified events only; unknown conflicts still fail closed."""
-    rows=normalize_cash_joint_periods(normalize_cash_overlaps(normalize_stock_only(rows,as_of),as_of),as_of)
+    rows=normalize_cash_overlaps(normalize_stock_only(rows,as_of),as_of)
+    rows=normalize_cash_joint_periods(normalize_cash_components(rows,as_of),as_of)
     if as_of<'20230707':
         return rows
     event=[r for r in rows if r.get('ts_code')=='600600.SH' and r.get('record_date')=='20230713' and r.get('div_proc')=='实施']
@@ -312,14 +423,15 @@ def implemented_dividends(rows, as_of, earliest_period=None):
             raise AppError('派息股数只能来自已核实的财政组成项，不能信任原始事件夹带的股数。')
         for field in ("record_date", "ex_date", "end_date"):
             date_key(row.get(field))
-        if row.get('event_kind')=='cash_joint_periods' or 'fiscal_components' in row:
+        if row.get('event_kind') in ('cash_overlap','cash_components'):
+            normalize=normalize_cash_overlaps if row['event_kind']=='cash_overlap' else normalize_cash_components
+            originals=row.get('correction_originals',[])
+            if not originals or normalize(originals,as_of)!=[row]:
+                raise AppError('现金分红归并不匹配已核实原始记录。')
+        elif row.get('event_kind')=='cash_joint_periods' or 'fiscal_components' in row:
             originals=row.get('correction_originals',[])
             if not originals or normalize_cash_joint_periods(originals,as_of)!=[row]:
                 raise AppError('联合派息归并不匹配已核实原始记录。')
-        if row.get('event_kind')=='cash_overlap':
-            originals=row.get('correction_originals',[])
-            if not originals or normalize_cash_overlaps(originals,as_of)!=[row]:
-                raise AppError('现金分红归并不匹配已核实原始记录。')
         stock_only=row.get('event_kind')=='stock_only'
         if stock_only:
             originals=row.get('correction_originals',[])
@@ -387,12 +499,14 @@ def annual_dividend_cash(events, balances, earliest_period=None):
     for event in events:
         if 'distribution_shares' in event:
             raise AppError('未核实的事件级派息股数不能用于估算。')
-        if event.get('event_kind')=='cash_joint_periods' or 'fiscal_components' in event:
+        if event.get('event_kind') in ('cash_overlap','cash_components','cash_joint_periods') or 'fiscal_components' in event:
             originals=event.get('correction_originals',[])
             available=event.get('correction_available_on')
-            if not originals or not available or normalize_cash_joint_periods(originals,date_key(available))!=[event]:
+            normalize={'cash_overlap':normalize_cash_overlaps,'cash_components':normalize_cash_components}.get(
+                event.get('event_kind'),normalize_cash_joint_periods)
+            if not originals or not available or normalize(originals,date_key(available))!=[event]:
                 raise AppError('联合派息组成项或股数依据未通过原文登记校验。')
-            components=event['fiscal_components']
+            components=event.get('fiscal_components',[event])
         else:
             components=[event]
         for component in components:

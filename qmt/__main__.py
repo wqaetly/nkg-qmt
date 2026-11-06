@@ -22,7 +22,7 @@ def parser():
     daily.add_argument('--refresh',action='store_true',help='忽略当天缓存重新取数')
     sub.add_parser('report',help='根据已有数据重新生成本地报告')
     forecast = sub.add_parser('forecast-check',help='离线检验固定年末股息估计与后来派息代理，不运行交易或改变规则')
-    forecast.add_argument('--version',default='historical-dividend-v25-annual-all-rank',help='已有完整年度候选实验目录名')
+    forecast.add_argument('--version',default='historical-dividend-v26-annual-all-rank',help='已有完整年度候选实验目录名')
     lab=sub.add_parser('lab',help='冻结二十只研究名单并更新K线，不运行定时任务或新增订单')
     lab.add_argument('--enrich',action='store_true',help='使用已配置搜索和AI补充公开资料草稿')
     backtest=sub.add_parser('backtest',help='独立历史二十股研究池与含费用回放，不更改模拟账本')

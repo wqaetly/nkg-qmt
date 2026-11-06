@@ -58,6 +58,50 @@
       "source": "https://static.cninfo.com.cn/finalpage/2017-07-03/1203675941.PDF",
       "pages": "1—2",
       "note": "中国神华临2017-031实施公告：2016年度末期股息每股税前0.460元，特别股息2.510元，合计2.970元；接口另列特别股息是同一A股派息事件的组成部分，不能重复加总。特别股息不作为持续普通分红。"
+    },
+    {
+      "expected": [
+        {
+          "ts_code": "600188.SH",
+          "end_date": "20211231",
+          "ann_date": "20220701",
+          "div_proc": "实施",
+          "cash_div_tax": 2.0,
+          "stk_div": 0.0,
+          "record_date": "20220713",
+          "ex_date": "20220714",
+          "pay_date": "20220714",
+          "imp_ann_date": "20220708"
+        },
+        {
+          "ts_code": "600188.SH",
+          "end_date": "20220331",
+          "ann_date": "20220331",
+          "div_proc": "实施",
+          "cash_div_tax": 0.4,
+          "stk_div": 0.0,
+          "record_date": "20220713",
+          "ex_date": "20220714",
+          "pay_date": "20220714",
+          "imp_ann_date": "20220708"
+        }
+      ],
+      "fiscal_components": [
+        {
+          "end_date": "20211231",
+          "cash_div_tax": "2.00",
+          "ordinary_cash_div_tax": "1.60",
+          "special_cash_div_tax": "0.40",
+          "distribution_shares": "4948703640"
+        }
+      ],
+      "available_on": "20220708",
+      "source": "https://static.cninfo.com.cn/finalpage/2022-07-08/1213984600.PDF",
+      "source_sha256": "5eca0364b141f5a855525a6a38aaf9b904f41619d0a07d81a228c903fe5edfdb",
+      "pages": "1—2",
+      "ordinary_cash_div_tax": "1.60",
+      "special_cash_div_tax": "0.40",
+      "note": "兖矿能源临2022-056实施公告：2021年度普通股息每股税前1.60元，特别股息0.40元，合计2.00元；接口特别项已包含于总额，不重复计入。分配基数4,948,703,640股，特别股息不外推为持续普通分红。"
     }
   ],
   "cash_joint_periods": [
@@ -413,6 +457,68 @@
       "source_sha256": "da727c83c34c1fe2ebd576e83624dc1423fa159bcd31301cd1f3006f940256bd",
       "pages": "1-2,4",
       "note": "实际每股现金0.125元、资本公积金转增0.2股；除权参考摊薄0.124元/0.198股仅供市场价格计算，不替代实际入账比例；新增无限售流通股20260629上市；账户级非整数分配未核实。"
+    },
+    {
+      "expected": {
+        "ts_code": "600188.SH",
+        "end_date": "20221231",
+        "ann_date": "20230701",
+        "div_proc": "实施",
+        "cash_div_tax": "4.30",
+        "stk_div": 0.5,
+        "record_date": "20230714",
+        "ex_date": "20230717",
+        "pay_date": "20230717",
+        "imp_ann_date": "20230710",
+        "event_kind": "cash_components",
+        "fiscal_components": [
+          {
+            "end_date": "20221231",
+            "cash_div_tax": "4.30",
+            "ordinary_cash_div_tax": "3.07",
+            "special_cash_div_tax": "1.23",
+            "distribution_shares": "4961360480"
+          }
+        ],
+        "correction_source": "https://static.cninfo.com.cn/finalpage/2023-07-10/1217254673.PDF",
+        "correction_source_sha256": "15feaa25f08f36c07f07c5830cc9f10745a7203bc515eabd77028f8cc451137f",
+        "correction_source_pages": "1—2",
+        "correction_available_on": "20230710",
+        "correction_note": "兖矿能源临2023-044实施公告：2022年度普通股息每股税前3.07元、特别股息1.23元，合计4.30元；两条接口记录是同一财政年度的一次派息，不能生成2023年度分红。每股送0.5股，只保留年度原始行的送股比例；分配前基数4,961,360,480股，新增A股2023年7月17日上市。",
+        "correction_originals": [
+          {
+            "ts_code": "600188.SH",
+            "end_date": "20221231",
+            "ann_date": "20230701",
+            "div_proc": "实施",
+            "cash_div_tax": 3.07,
+            "stk_div": 0.5,
+            "record_date": "20230714",
+            "ex_date": "20230717",
+            "pay_date": "20230717",
+            "imp_ann_date": "20230710"
+          },
+          {
+            "ts_code": "600188.SH",
+            "end_date": "20230325",
+            "ann_date": "20230325",
+            "div_proc": "实施",
+            "cash_div_tax": 1.23,
+            "stk_div": 0.0,
+            "record_date": "20230714",
+            "ex_date": "20230717",
+            "pay_date": "20230717",
+            "imp_ann_date": "20230710"
+          }
+        ],
+        "correction_fingerprint": "b531ed023fa14dac5f9484e8295584510b8ca7a1cb2366c04d84b0640739951c"
+      },
+      "available_on": "20230710",
+      "stock_list_date": "20230717",
+      "source": "https://static.cninfo.com.cn/finalpage/2023-07-10/1217254673.PDF",
+      "source_sha256": "15feaa25f08f36c07f07c5830cc9f10745a7203bc515eabd77028f8cc451137f",
+      "pages": "1—2",
+      "note": "临2023-044公告核实归并后同一A股事件：2023年7月14日登记、7月17日除权除息及新增股份上市。每股送0.5股只按登记日持股计算一次，不能用新增股份重复计算本次现金分红。"
     }
   ],
   "financial_zero_fields": [
@@ -515,6 +621,50 @@
         }
       ],
       "note": "劲嘉股份2024年度全年现金分红为0：中报确认中期不派，2025-030专项公告列全年现金总额0，2024年度股东大会于2025-06-27通过年度不分配议案，决议2025-06-28可用。此前仅预案，不回填。2024日历年支付的2023年度现金不属于FY2024。没有创建除息、派息或现金事件。"
+    }
+  ],
+  "cash_dividend_components": [
+    {
+      "expected": [
+        {
+          "ts_code": "600188.SH",
+          "end_date": "20221231",
+          "ann_date": "20230701",
+          "div_proc": "实施",
+          "cash_div_tax": 3.07,
+          "stk_div": 0.5,
+          "record_date": "20230714",
+          "ex_date": "20230717",
+          "pay_date": "20230717",
+          "imp_ann_date": "20230710"
+        },
+        {
+          "ts_code": "600188.SH",
+          "end_date": "20230325",
+          "ann_date": "20230325",
+          "div_proc": "实施",
+          "cash_div_tax": 1.23,
+          "stk_div": 0.0,
+          "record_date": "20230714",
+          "ex_date": "20230717",
+          "pay_date": "20230717",
+          "imp_ann_date": "20230710"
+        }
+      ],
+      "fiscal_components": [
+        {
+          "end_date": "20221231",
+          "cash_div_tax": "4.30",
+          "ordinary_cash_div_tax": "3.07",
+          "special_cash_div_tax": "1.23",
+          "distribution_shares": "4961360480"
+        }
+      ],
+      "available_on": "20230710",
+      "source": "https://static.cninfo.com.cn/finalpage/2023-07-10/1217254673.PDF",
+      "source_sha256": "15feaa25f08f36c07f07c5830cc9f10745a7203bc515eabd77028f8cc451137f",
+      "pages": "1—2",
+      "note": "兖矿能源临2023-044实施公告：2022年度普通股息每股税前3.07元、特别股息1.23元，合计4.30元；两条接口记录是同一财政年度的一次派息，不能生成2023年度分红。每股送0.5股，只保留年度原始行的送股比例；分配前基数4,961,360,480股，新增A股2023年7月17日上市。"
     }
   ]
 }
