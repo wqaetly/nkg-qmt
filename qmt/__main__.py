@@ -27,6 +27,7 @@ def parser():
     backtest.add_argument('--long-history',action='store_true',help='从2014年末独立建池，回放2015年至今；另取更早财报与估值预热')
     backtest.add_argument('--quality-first',action='store_true',help='独立实验：财务门槛前置后选最多20只，保留旧股息率排序实验')
     backtest.add_argument('--annual-pool',action='store_true',help='财务门槛前置，每年末重新建池；同一账本连续回放，不重置现金')
+    backtest.add_argument('--hold-band',action='store_true',help='与 --annual-pool 同用：月末对已有健康持仓使用3%保留门槛，新买仍按原条件')
     research = sub.add_parser('research',help='搜索公开资料并由已配置的 AI 生成研究草稿')
     research.add_argument('symbol',type=symbol_key)
     review = sub.add_parser('review-template',help='生成待人工核查的三情景模板，不覆盖已有模板')
@@ -123,9 +124,12 @@ def run(args):
             status={'ok':True,'message':message,'at':now_cn().isoformat()}
             atomic_json(status_path,status)
         elif args.command=='backtest':
-            from .experiment import run_experiment, EXPERIMENT, LONG_EXPERIMENT, QUALITY_EXPERIMENT, QUALITY_LONG_EXPERIMENT, ANNUAL_EXPERIMENT, ANNUAL_LONG_EXPERIMENT
+            from .experiment import run_experiment, EXPERIMENT, LONG_EXPERIMENT, QUALITY_EXPERIMENT, QUALITY_LONG_EXPERIMENT, ANNUAL_EXPERIMENT, ANNUAL_LONG_EXPERIMENT, HOLD_EXPERIMENT, HOLD_LONG_EXPERIMENT
             experiment=(QUALITY_LONG_EXPERIMENT if args.long_history else QUALITY_EXPERIMENT) if args.quality_first else (LONG_EXPERIMENT if args.long_history else EXPERIMENT)
             if args.annual_pool:experiment=ANNUAL_LONG_EXPERIMENT if args.long_history else ANNUAL_EXPERIMENT
+            if args.hold_band:
+                if not args.annual_pool:raise AppError('--hold-band 须与 --annual-pool 同用，另存实验，不修改日常规则。')
+                experiment=HOLD_LONG_EXPERIMENT if args.long_history else HOLD_EXPERIMENT
             run_experiment(workspace,report['as_of'],cfg,experiment=experiment)
         elif args.command=='lab':
             from .lab import run_lab

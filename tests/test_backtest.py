@@ -29,6 +29,104 @@ def dividend():
 
 
 class BacktestTests(unittest.TestCase):
+    def test_retain_keeps_held_shares_then_empty_retain_exits(self):
+        data,signals,cfg=inputs()
+        signals[DAYS[2]]={'candidates':[],'retain':[CODE]}
+        result=simulate(data,signals,cfg)
+        self.assertEqual(len(result['trades']),1)
+        self.assertEqual(result['equity_curve'][-1]['positions'],{CODE:200})
+        signals[DAYS[3]]={'candidates':[],'retain':[]}
+        result=simulate(data,signals,cfg)
+        self.assertEqual([t['side'] for t in result['trades']],['buy','sell'])
+        self.assertEqual(result['trades'][-1]['trade_date'],DAYS[4])
+        self.assertEqual(result['equity_curve'][-1]['positions'],{})
+        signals[DAYS[3]]=[]
+        self.assertEqual(simulate(data,signals,cfg),result)
+
+    def test_retain_cannot_open_a_position_and_does_not_block_healthy_buys(self):
+        data,signals,cfg=inputs();other='600002.SH'
+        self.assertEqual(simulate(data,{DAYS[0]:{'candidates':[],'retain':[CODE]}},cfg)['plans'],[])
+        data['bars'][other]={d:bar() for d in DAYS};data['industries'][other]='其他行业'
+        signals[DAYS[2]]={'candidates':[{'symbol':other,'reference_price':'9','known_on':DAYS[2]}],'retain':[CODE]}
+        result=simulate(data,signals,cfg)
+        self.assertEqual(result['equity_curve'][-1]['positions'],{CODE:200,other:200})
+        self.assertEqual([t['side'] for t in result['trades']],['buy','buy'])
+
+    def test_retain_candidate_overlap_uses_original_entry_rebalance(self):
+        for price,quantity in (('4',400),('12',100)):
+            data,signals,cfg=inputs()
+            for day in DAYS[2:]:data['bars'][CODE][day]=bar(price)
+            candidate={'symbol':CODE,'reference_price':'20','known_on':DAYS[2]}
+            signals[DAYS[2]]={'candidates':[candidate]}
+            original=simulate(data,signals,cfg)
+            signals[DAYS[2]]['retain']=[CODE]
+            retained=simulate(data,signals,cfg)
+            with self.subTest(price=price):
+                self.assertEqual(retained['trades'],original['trades'])
+                self.assertEqual(retained['equity_curve'],original['equity_curve'])
+                self.assertEqual(retained['equity_curve'][-1]['positions'],{CODE:quantity})
+
+    def test_retain_validation_rejects_malformed_duplicate_frozen_or_missing_quotes(self):
+        invalid=[None,CODE,{},[CODE,CODE],[{}],[123],['600002.SH']]
+        for retained in invalid:
+            data,_,cfg=inputs()
+            with self.subTest(retained=retained),self.assertRaises(AppError):
+                simulate(data,{DAYS[0]:{'candidates':[],'retain':retained}},cfg)
+        data,_,cfg=inputs()
+        with self.assertRaisesRegex(AppError,'保留与资料缺失冻结'):
+            simulate(data,{DAYS[0]:{'candidates':[],'retain':[CODE],'freeze':[CODE]}},cfg)
+        data['bars'][CODE].pop(DAYS[2])
+        with self.assertRaisesRegex(AppError,'信号日行情'):
+            simulate(data,{DAYS[2]:{'candidates':[],'retain':[CODE]}},cfg)
+
+    def test_retain_requires_active_membership_with_exclusive_end_and_allows_reentry(self):
+        data,_,cfg=inputs()
+        data['universe_membership']={CODE:[{'start':DAYS[1],'end':DAYS[2]},{'start':DAYS[3],'end':None}]}
+        snapshot={'candidates':[],'retain':[CODE]}
+        for day in (DAYS[0],DAYS[2]):
+            with self.subTest(day=day),self.assertRaisesRegex(AppError,'成员区间'):
+                simulate(data,{day:snapshot},cfg)
+        for day in (DAYS[1],DAYS[3]):
+            self.assertEqual(simulate(data,{day:snapshot},cfg)['trades'],[])
+
+    def test_retain_trims_at_snapshot_budget_without_daily_trimming_or_topups(self):
+        for price,quantity in (('4',200),('12',100),('25',0)):
+            data,signals,cfg=inputs()
+            for day in DAYS[2:]:data['bars'][CODE][day]=bar(price)
+            no_snapshot=simulate(data,signals,cfg)
+            self.assertEqual(no_snapshot['equity_curve'][-1]['positions'],{CODE:200})
+            signals[DAYS[2]]={'candidates':[],'retain':[CODE]}
+            result=simulate(data,signals,cfg)
+            with self.subTest(price=price):
+                self.assertEqual(result['equity_curve'][2]['positions'],{CODE:200})
+                self.assertEqual(result['equity_curve'][-1]['positions'],{CODE:quantity} if quantity else {})
+                self.assertFalse(any(t['side']=='buy' and t['signal_date']==DAYS[2] for t in result['trades']))
+
+    def test_retain_uses_code_order_and_remaining_sector_budget(self):
+        data,signals,cfg=inputs();codes=[CODE,'600002.SH','600003.SH']
+        for code in codes:
+            data['bars'][code]={d:bar('4' if d<DAYS[2] else '6') for d in DAYS}
+            data['industries'][code]='虚构行业'
+        signals[DAYS[0]]=[{'symbol':c,'reference_price':'5','known_on':DAYS[0]} for c in codes]
+        signals[DAYS[2]]={'candidates':[],'retain':codes[::-1]}
+        result=simulate(data,signals,cfg)
+        self.assertEqual(result['equity_curve'][1]['positions'],dict(zip(codes,[400,400,100])))
+        self.assertEqual(result['equity_curve'][-1]['positions'],{codes[0]:300,codes[1]:300})
+        signals[DAYS[2]]['retain']=codes
+        self.assertEqual(simulate(data,signals,cfg),result)
+
+    def test_freeze_reserves_before_retain_and_still_blocks_new_buys(self):
+        data,signals,cfg=inputs();other,new='600002.SH','600003.SH'
+        for code in (CODE,other,new):
+            data['bars'][code]={d:bar('4' if d<DAYS[2] else '6') for d in DAYS}
+            data['industries'][code]='其他行业' if code==new else '虚构行业'
+        signals[DAYS[0]]=[{'symbol':c,'reference_price':'5','known_on':DAYS[0]} for c in (CODE,other)]
+        signals[DAYS[2]]={'candidates':[{'symbol':new,'reference_price':'7','known_on':DAYS[2]}],
+                          'freeze':[CODE],'retain':[other]}
+        result=simulate(data,signals,cfg)
+        self.assertEqual(result['equity_curve'][-1]['positions'],{CODE:400,other:200})
+        self.assertTrue(any(s['symbol']==new and '暂停新增买入' in s['reason'] for s in result['skipped']))
+
     def test_membership_rejects_future_entry_and_exit_day_but_allows_reentry(self):
         data,signals,cfg=inputs()
         data['universe_membership']={CODE:[{'start':DAYS[2],'end':None}]}

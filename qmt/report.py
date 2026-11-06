@@ -152,6 +152,14 @@ def research_panel(research, backtest, chart_symbols=(), history=''):
     diagnoses=''
     if diagnostics or selection:
         states='；'.join(f'{state} {count} 次' for state,count in diagnostics.get('states',{}).items())
+        entry=diagnostics.get('entry_funnel',[])
+        funnel=''
+        if entry:
+            funnel='<div id="entry-funnel">'+table(['当期候选顺序筛选','公司·月次数'],[[item.get('stage'),item.get('count')] for item in entry])
+            funnel+='<p class="muted">仅统计当期候选，排除退池后继续跟踪的公司。各层是按顺序取交集，不表示单项条件的独立因果作用；合格候选次数不是订单或成交笔数。</p></div>'
+        months=diagnostics.get('candidate_months',{})
+        if months:
+            funnel+=f'<p id="candidate-months" class="muted">月度评估 {esc(months.get("months"))} 次，其中 {esc(months.get("empty"))} 次无买入候选；合格候选累计 {esc(months.get("total_candidates"))} 个公司·月。</p>'
         rebalances=selection.get('rebalances',[])
         rejected=Counter(item.get('reason','未记录原因') for item in (selection.get('rejected',[]) if not rebalances else [item for pool in rebalances for item in pool.get('rejected',[])]))
         reason_rows=[['建池淘汰（公司 / 建池时点）' if rebalances else '建池淘汰（公司）',reason,count] for reason,count in rejected.most_common()]
@@ -166,21 +174,25 @@ def research_panel(research, backtest, chart_symbols=(), history=''):
                 max(0,pool['candidate_count']-len(pool.get('symbols',[]))) if isinstance(pool.get('candidate_count'),int) else None] for pool in rebalances])
             pool_table+='<p class="muted">未入池候选含条件不满足或排序未选中，不等于财务不合格；年度淘汰原因按公司 / 建池时点计数，同一公司可能重复出现。</p>'
         diagnoses=f'''<details class="research-results" id="research-diagnostics"><summary>建池淘汰、筛选与未成交原因</summary><p>{esc(selection_note)}</p><p>共 {esc(diagnostics.get('evaluations'))} 次公司 / 时点评估。{esc(states)}</p>
-        {pool_table}<p class="muted">建池淘汰按{'公司 / 建池时点' if rebalances else '公司'}计数，筛选按公司 / 时点计数，执行跳过按事件计数，三者不能相加。数据不足、未达到价格要求和资金不够买一手是不同原因；不能为了产生交易把它们视为通过。</p>{reasons}</details>'''
+        {funnel}{pool_table}<p class="muted">建池淘汰按{'公司 / 建池时点' if rebalances else '公司'}计数，筛选按公司 / 时点计数，执行跳过按事件计数，三者不能相加。数据不足、未达到价格要求和资金不够买一手是不同原因；不能为了产生交易把它们视为通过。</p>{reasons}</details>'''
     limitations=research.get('limitations',[])+backtest.get('limitations',[])
-    notes=''.join(f'<li>{esc(note)}</li>' for note in dict.fromkeys(limitations))
+    notes=''.join(f'<li>{esc(note)}</li>' for note in dict.fromkeys(limitations) if note!=backtest.get('protocol',{}).get('monthly_targets'))
     backtest_state=backtest.get('status') or research.get('backtest',{}).get('status') or '待运行'
     backtest_state=EXPERIMENT_STATES.get(backtest_state,backtest_state)
     historical_count=backtest.get('coverage',{}).get('stocks')
     historical_note=f'历史涉及 {historical_count} 只；与当日模拟账户分开记录' if historical_count is not None else '与当日模拟账户分开记录'
+    protocol=backtest.get('protocol',{})
+    retention=percent(protocol.get('retention_yield'))
+    holding_note=f'<span>持有门槛 {retention} / 仅月末检查</span>' if retention!='—' else ''
+    target_note=f'<p>回放调仓规则：{esc(protocol["monthly_targets"])}</p>' if protocol.get('monthly_targets') else ''
     message=backtest.get('message') or research.get('backtest',{}).get('message') or research.get('message','')
     return f'''<section class="panel research-lab" id="research-lab"><div class="section-title"><h2>策略研究台</h2><span class="pill">手动运行 · 不启用定时任务</span></div>
-    <div class="research-summary"><div><small>研究目标</small><strong>年化 ≥ 10%</strong><span>待验证，不是收益承诺</span></div><div><small>股票研究池</small><strong>{len(stocks)} / {esc(research.get('target_count',20))}</strong><span>研究对象，不等于持仓数量</span></div><div><small>历史检验状态</small><strong>{esc(backtest_state)}</strong><span>{esc(historical_note)}</span></div></div>
+    <div class="research-summary"><div><small>研究目标</small><strong>年化 ≥ 10%</strong><span>待验证，不是收益承诺</span></div><div><small>股票研究池</small><strong>{len(stocks)} / {esc(research.get('target_count',20))}</strong><span>研究对象，不等于持仓数量</span></div><div><small>历史检验状态</small><strong>{esc(backtest_state)}</strong><span>{esc(historical_note)}</span>{holding_note}</div></div>
     <p class="muted">研究截至 {esc(research.get('as_of'))} · {esc(research.get('version'))}。{esc(research.get('method',''))}</p>
     <div class="filters"><label>搜索全部研究股票<input id="research-search" type="search" placeholder="公司、代码、行业或待核实问题"></label><span class="muted" id="research-count" aria-live="polite"></span></div>
     <p class="research-table-hint muted">表格可左右滑动，右侧查看研究依据与 K 线。</p><div class="table-scroll"><table id="research-table"><thead><tr><th>公司</th><th>估值</th><th>流动性</th><th>情景股息率</th><th>分红 / 综合状态</th><th>查看</th></tr></thead><tbody>{''.join(rows)}</tbody></table></div>
     <p id="research-empty" class="muted" hidden>没有匹配的研究对象。</p><div class="research-pagination"><button id="research-prev" type="button">上一页</button><span id="research-page" aria-live="polite"></span><button id="research-next" type="button">下一页</button></div>
-    {comparison_chart(backtest) if backtest else ''}{history}{coverage_panel(backtest.get('coverage',{}))}{diagnoses}{period_diagnostics_panel(backtest.get('period_diagnostics',{})) if backtest.get('status')!='blocked' else ''}<details class="research-results"><summary>历史实验指标与验证边界</summary><p>{esc(message)}</p>{comparisons}<ul>{notes}</ul><p class="muted">平均仓位指每天投资市值占总资产比例的平均值；现金也计入收益分母。单个区间超过 10% 不代表目标已验证；还需独立区间、交易成本、退市与数据时点检查。历史结果不能保证未来收益。</p></details></section>'''
+    {comparison_chart(backtest) if backtest else ''}{history}{coverage_panel(backtest.get('coverage',{}))}{diagnoses}{period_diagnostics_panel(backtest.get('period_diagnostics',{})) if backtest.get('status')!='blocked' else ''}<details class="research-results"><summary>历史实验指标与验证边界</summary><p>{esc(message)}</p>{target_note}{comparisons}<ul>{notes}</ul><p class="muted">平均仓位指每天投资市值占总资产比例的平均值；现金也计入收益分母。单个区间超过 10% 不代表目标已验证；还需独立区间、交易成本、退市与数据时点检查。历史结果不能保证未来收益。</p></details></section>'''
 
 
 def automatic_panel(data):

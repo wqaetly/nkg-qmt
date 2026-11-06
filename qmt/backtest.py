@@ -128,8 +128,17 @@ def _inputs(data, signals, max_holdings):
     for day,snapshot in signals.items():
         candidates = snapshot.get('candidates') if isinstance(snapshot,dict) else snapshot
         frozen = snapshot.get('freeze',[]) if isinstance(snapshot,dict) else []
-        if day not in sessions or not isinstance(candidates,list) or not isinstance(frozen,list):
+        retained = snapshot.get('retain',[]) if isinstance(snapshot,dict) else []
+        if day not in sessions or not isinstance(candidates,list) or not isinstance(frozen,list) or not isinstance(retained,list):
             raise AppError('信号日期不在回测交易日内，或候选格式无效。')
+        if (any(not isinstance(code,str) for code in retained) or len(set(retained))!=len(retained)
+                or any(code not in bars or day not in bars[code] for code in retained)):
+            raise AppError('保留股票代码格式无效、重复或缺少信号日行情。')
+        if set(retained)&set(frozen):
+            raise AppError('同一股票不能同时保留与资料缺失冻结。')
+        if membership is not None and any(not any(window['start']<=day and (window['end'] is None or day<window['end'])
+                                                   for window in membership[code]) for code in retained):
+            raise AppError('保留股票不在当日有效的历史成员区间内。')
         if len(set(frozen))!=len(frozen) or any(code not in bars for code in frozen):
             raise AppError('冻结股票代码重复或缺少行情。')
         if membership is not None and any(day<membership[code][0]['start'] for code in frozen):
@@ -146,6 +155,8 @@ def _inputs(data, signals, max_holdings):
                 raise AppError('买入候选不在当日有效的历史成员区间内。')
             dec(candidate['reference_price'],positive=True)
         snapshots[day]={'candidates':candidates,'freeze':frozen}
+        if retained:
+            snapshots[day]['retain']=sorted(retained)
     dividends = {}
     for symbol, events in data.get('dividends',{}).items():
         if symbol not in bars:
@@ -182,8 +193,10 @@ def simulate(data, signals, cfg, initial_cash=None, max_holdings=5):
     industries[symbol], dividends[symbol] (implemented events), universe_as_of.
     Optional universe_membership[symbol]: [{start, end}], with end exclusive.
     signals[day]: [{symbol, reference_price, known_on, reason?}, ...], or
-    {candidates: [...], freeze: [symbol,...]}. Frozen held shares are preserved,
+    {candidates: [...], freeze: [symbol,...], retain: [symbol,...]}. Frozen held shares are preserved,
     count toward caps, and block new buys; frozen unheld names do not block others.
+    Retain-only held shares keep at most their current quantity within the same monthly
+    target budgets. Candidates still rebalance normally; no daily price-driven trimming.
     An empty list exits; absent snapshots keep positions. Signals at the last session
     cannot fill. Missing bars for a held/ordered stock and held splits halt.
     """
@@ -223,6 +236,15 @@ def simulate(data, signals, cfg, initial_cash=None, max_holdings=5):
                 sector=data['industries'][code]
                 sector_values[sector]=sector_values.get(sector,Decimal(0))+dec(prices[code]['close'])*held[code]
             budget = min(dec(cfg['paper_max_position']),equity*Decimal('.9')/max_holdings)
+            candidate_codes = {c['symbol'] for c in snapshots[day]['candidates']}
+            for code in sorted((set(snapshots[day].get('retain',[]))&set(held))-candidate_codes):
+                close = dec(prices[code]['close'])
+                sector = data['industries'][code]
+                available = min(budget,dec(cfg['paper_max_sector'])-sector_values.get(sector,Decimal(0)))
+                quantity = min(held[code],max(0,int(available/(close*100))*100))
+                if quantity:
+                    targets[code] = quantity
+                    sector_values[sector] = sector_values.get(sector,Decimal(0))+close*quantity
             for candidate in snapshots[day]['candidates']:
                 code = candidate['symbol']
                 if len(targets)>=max_holdings:

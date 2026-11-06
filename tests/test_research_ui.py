@@ -145,6 +145,46 @@ class ResearchUiTests(unittest.TestCase):
         self.assertEqual(percent('not a number'),'—')
         self.assertEqual(percent('nan'),'—')
 
+    def test_entry_funnel_displays_provided_counts_with_distinct_scope_and_units(self):
+        stages=[('当期候选',940),('财务通过',589),('估值通过',208),('流动性通过',199),('基础候选通过',198),('全部买入条件通过',41)]
+        backtest={'diagnostics':{'evaluations':2000,'entry_funnel':[{'stage':stage,'count':count} for stage,count in stages],
+                  'candidate_months':{'months':47,'empty':24,'total_candidates':41}}}
+        page=research_panel(self.research(),backtest)
+        for stage,count in stages:
+            self.assertIn(f'{stage}</td><td>{count}</td>',page)
+        self.assertIn('共 2000 次公司 / 时点评估',page)
+        self.assertIn('排除退池后继续跟踪',page)
+        self.assertIn('按顺序取交集',page)
+        self.assertIn('不表示单项条件的独立因果作用',page)
+        self.assertIn('合格候选次数不是订单或成交笔数',page)
+        self.assertIn('月度评估 47 次，其中 24 次无买入候选；合格候选累计 41 个公司·月',page)
+        self.assertEqual(page.count('class="research-stock"'),20)
+        self.assertIn('<details class="research-results" id="research-diagnostics">',page)
+
+    def test_missing_funnel_is_not_reconstructed_and_explicit_zero_is_preserved(self):
+        old=research_panel(self.research(),{'diagnostics':{'evaluations':5,'states':{'满足价格条件':0}}})
+        self.assertNotIn('id="entry-funnel"',old)
+        self.assertNotIn('id="candidate-months"',old)
+        self.assertNotIn('持有门槛',old)
+        page=research_panel(self.research(),{'diagnostics':{
+            'entry_funnel':[{'stage':'<script>阶段</script>','count':0}],
+            'candidate_months':{'months':0,'empty':0,'total_candidates':0}}})
+        self.assertIn('&lt;script&gt;阶段&lt;/script&gt;</td><td>0',page)
+        self.assertNotIn('<script>阶段</script>',page)
+        self.assertIn('月度评估 0 次，其中 0 次无买入候选；合格候选累计 0 个公司·月',page)
+
+    def test_retention_summary_uses_protocol_and_labels_month_end_checks(self):
+        protocol={'retention_yield':'0.03','monthly_targets':'月末按持有条件保留目标 <script>规则</script>'}
+        page=research_panel(self.research(),{'protocol':protocol,'limitations':[protocol['monthly_targets']]})
+        self.assertIn('持有门槛 3.00% / 仅月末检查',page)
+        self.assertIn('回放调仓规则：月末按持有条件保留目标 &lt;script&gt;规则&lt;/script&gt;',page)
+        self.assertNotIn('<script>规则</script>',page)
+        self.assertEqual(page.count('月末按持有条件保留目标'),1)
+        protocol['retention_yield']='0.025'
+        self.assertIn('持有门槛 2.50% / 仅月末检查',research_panel({}, {'protocol':protocol}))
+        protocol['retention_yield']='nan'
+        self.assertNotIn('持有门槛',research_panel({}, {'protocol':protocol}))
+
     def test_comparison_payload_and_diagnostics_are_not_raw_html(self):
         backtest={'comparison_series':[{'label':'</script><img src=x onerror=alert(1)>','kind':'strategy','points':[{'day':'20230102','value':1}]}],
                   'diagnostics':{'evaluations':940,'states':{'待数据核实':600},'reasons':[{'reason':'<script>缺失</script>','count':400}]},
