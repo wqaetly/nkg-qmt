@@ -27,6 +27,7 @@ def parser():
     backtest.add_argument('--long-history',action='store_true',help='从2014年末独立建池，回放2015年至今；另取更早财报与估值预热')
     backtest.add_argument('--quality-first',action='store_true',help='独立实验：财务门槛前置后选最多20只，保留旧股息率排序实验')
     backtest.add_argument('--annual-pool',action='store_true',help='财务门槛前置，每年末重新建池；同一账本连续回放，不重置现金')
+    backtest.add_argument('--all-candidates',action='store_true',help='与 --annual-pool 同用：检查全部年末初筛候选，完整入场筛选后分配最多20只持仓')
     backtest.add_argument('--hold-band',action='store_true',help='与 --annual-pool 同用：月末对已有健康持仓使用3%保留门槛，新买仍按原条件')
     research = sub.add_parser('research',help='搜索公开资料并由已配置的 AI 生成研究草稿')
     research.add_argument('symbol',type=symbol_key)
@@ -130,6 +131,9 @@ def run(args):
             if args.hold_band:
                 if not args.annual_pool:raise AppError('--hold-band 须与 --annual-pool 同用，另存实验，不修改日常规则。')
                 experiment=HOLD_LONG_EXPERIMENT if args.long_history else HOLD_EXPERIMENT
+            if args.all_candidates:
+                if not args.annual_pool:raise AppError('--all-candidates 须与 --annual-pool 同用，持仓上限仍为20。')
+                experiment={**experiment,'version':experiment['version']+'-all','cohort_limit':None}
             run_experiment(workspace,report['as_of'],cfg,experiment=experiment)
         elif args.command=='lab':
             from .lab import run_lab

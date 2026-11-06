@@ -129,6 +129,41 @@ class ResearchUiTests(unittest.TestCase):
         backtest['coverage']['stocks']=0
         self.assertIn('历史涉及 0 只',research_panel(self.research(),backtest))
 
+    def test_full_annual_candidate_pool_separates_coverage_from_holdings_and_daily_research(self):
+        backtest={'protocol':{'cohort_limit':None},'coverage':{'stocks':35},
+                  'selection_audit':{'target_count':None,'holding_limit':20,'stocks':[{} for _ in range(35)],
+                      'rebalances':[{'day':'20251231','symbols':list(range(35)),'candidate_count':50,
+                                     'evaluated_count':44,'rejected':[{'reason':'财务待核实'}]}]}}
+        before=json.dumps(backtest,sort_keys=True)
+        page=research_panel(self.research(),backtest)
+        self.assertIn('历年候选池覆盖 35 只',page)
+        self.assertIn('年末初筛候选全部检查，合格候选池不设数量上限',page)
+        self.assertIn('持仓最多 20 只',page)
+        self.assertNotIn('每期最多',page)
+        self.assertNotIn('None',page)
+        self.assertIn('<th>已检查</th>',page)
+        self.assertIn('20251231</td><td>35</td><td>50</td><td>15</td><td>44',page)
+        self.assertIn('仅在年末重筛候选池，月度评估当期候选；不是每月扫描全市场',page)
+        self.assertIn('实际入池是候选覆盖，不是实际持仓',page)
+        self.assertEqual(page.count('class="research-stock"'),20)
+        self.assertIn('20 / 20',page)
+        self.assertEqual(before,json.dumps(backtest,sort_keys=True))
+
+    def test_legacy_annual_missing_evaluated_count_stays_unknown_and_explicit_zero_is_preserved(self):
+        backtest={'selection_audit':{'stocks':[{} for _ in range(7)],'rebalances':[
+            {'day':'20201231','symbols':list(range(7)),'candidate_count':30,
+             'rejected':[{'reason':'财务待核实'} for _ in range(2)]},
+            {'day':'20211231','symbols':[],'candidate_count':0,'evaluated_count':0}]}}
+        page=research_panel(self.research(),backtest)
+        self.assertIn('历年涉及 7 只；每期最多 20 只，共 2 次建池',page)
+        self.assertIn('20201231</td><td>7</td><td>30</td><td>23</td><td>—',page)
+        self.assertIn('20211231</td><td>0</td><td>0</td><td>0</td><td>0',page)
+        self.assertNotIn('持仓最多',page)
+        self.assertNotIn('候选全部检查',page)
+        self.assertNotIn('不设数量上限',page)
+        backtest['selection_audit'].pop('rebalances')
+        self.assertIn('已评估 — 家',research_panel(self.research(),backtest))
+
     def test_optional_records_and_untrusted_text_are_safe(self):
         with tempfile.TemporaryDirectory() as tmp:
             path=Path(tmp)/'latest.json'

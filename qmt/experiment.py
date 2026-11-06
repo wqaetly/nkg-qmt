@@ -16,24 +16,24 @@ from .service import read_json
 from .industry import industry_at, load_industry_history
 
 
-EXPERIMENT = {'version':'historical-dividend-v15','selection_day':'20221230','development_end':'20241231',
+EXPERIMENT = {'version':'historical-dividend-v16','selection_day':'20221230','development_end':'20241231',
               'validation_start':'20250101','pool_size':20,'entry_yields':['0.04','0.05','0.06'],
               'primary_entry_yield':'0.05','target_cagr':'0.10','benchmark':'515180.SH'}
-LONG_EXPERIMENT = {**EXPERIMENT,'version':'historical-dividend-v15-long','selection_day':'20141231',
+LONG_EXPERIMENT = {**EXPERIMENT,'version':'historical-dividend-v16-long','selection_day':'20141231',
                    'development_end':'20191231','validation_start':'20200101','benchmark':'510880.SH'}
-QUALITY_EXPERIMENT = {**EXPERIMENT,'version':'historical-dividend-v15-quality','quality_first':True}
-QUALITY_LONG_EXPERIMENT = {**LONG_EXPERIMENT,'version':'historical-dividend-v15-quality-long','quality_first':True}
-ANNUAL_EXPERIMENT = {**QUALITY_EXPERIMENT,'version':'historical-dividend-v15-annual','pool_refresh':'year_end',
+QUALITY_EXPERIMENT = {**EXPERIMENT,'version':'historical-dividend-v16-quality','quality_first':True}
+QUALITY_LONG_EXPERIMENT = {**LONG_EXPERIMENT,'version':'historical-dividend-v16-quality-long','quality_first':True}
+ANNUAL_EXPERIMENT = {**QUALITY_EXPERIMENT,'version':'historical-dividend-v16-annual','pool_refresh':'year_end',
     'pool_exit':'退出名单的资料待核实持仓继续冻结跟踪；其他退出名单股票按下一交易日限价退出。行业沿用首次归属，变更冻结。',
     'monthly_targets':'沿用原回放月末重配：除冻结持仓外，仅当月仍满足全部买入条件者保留目标；不宣称只在3%股息率以下退出。'}
-ANNUAL_LONG_EXPERIMENT = {**ANNUAL_EXPERIMENT,'version':'historical-dividend-v15-annual-long',
+ANNUAL_LONG_EXPERIMENT = {**ANNUAL_EXPERIMENT,'version':'historical-dividend-v16-annual-long',
     'selection_day':LONG_EXPERIMENT['selection_day'],'development_end':LONG_EXPERIMENT['development_end'],
     'validation_start':LONG_EXPERIMENT['validation_start'],'benchmark':LONG_EXPERIMENT['benchmark']}
 
 
-HOLD_EXPERIMENT = {**ANNUAL_EXPERIMENT,'version':'historical-dividend-v15-annual-hold','retention_yield':'0.03',
+HOLD_EXPERIMENT = {**ANNUAL_EXPERIMENT,'version':'historical-dividend-v16-annual-hold','retention_yield':'0.03',
     'monthly_targets':'月末检查：当期成员财务已核实、流动性通过且当日情景股息率至少3%可保留；估值及历史股息入场条件不单独触发卖出。仅持有资格不允许加仓；仍满足完整入场条件者沿用原重配。保留股先占额度，按原月度单股预算与行业额度整手修剪，资料待核实仍冻结；不是每日风险退出。'}
-HOLD_LONG_EXPERIMENT = {**ANNUAL_LONG_EXPERIMENT,'version':'historical-dividend-v15-annual-long-hold',
+HOLD_LONG_EXPERIMENT = {**ANNUAL_LONG_EXPERIMENT,'version':'historical-dividend-v16-annual-long-hold',
                        'retention_yield':HOLD_EXPERIMENT['retention_yield'],'monthly_targets':HOLD_EXPERIMENT['monthly_targets']}
 
 
@@ -126,7 +126,9 @@ def prepare_experiment(workspace, end, progress=print, cfg=None, experiment=EXPE
     candidates.sort(key=lambda code:(-dec(quotes[code]['dv_ttm']),dec(quotes[code]['pe_ttm']),code))
     chosen=[]; rejected=[]; dossiers={}; names={}
     quality_first=experiment.get('quality_first',False)
-    target=experiment['pool_size']
+    target=experiment.get('cohort_limit',experiment['pool_size'])
+    if target is None and not quality_first:
+        raise AppError('全候选实验必须先检查财务门槛。')
     for candidate_index,code in enumerate(candidates,1):
         if quality_first and candidate_index%10==0:
             progress(f'财务建池检查 {day}：{candidate_index}/{len(candidates)}，已通过 {len(chosen)} 只',flush=True)
@@ -156,8 +158,8 @@ def prepare_experiment(workspace, end, progress=print, cfg=None, experiment=EXPE
                        'selection_quote':quotes[code],'selection_financial_period':row.get('latest_period'),
                        **({'selection_quality':quality} if quality_first else {})})
         dossiers[code]=dossier; names[code]=name_rows
-        progress(f'历史研究池 {len(chosen)}/{target}：{code} {name}（按 {day} 可用指标）',flush=True)
-        if len(chosen)==target:break
+        progress(f'历史研究池 {len(chosen)}/{target if target is not None else "不限候选数"}：{code} {name}（按 {day} 可用指标）',flush=True)
+        if target is not None and len(chosen)==target:break
     if len(chosen)!=target and not quality_first:raise AppError('历史研究池不足20只，未用当前股票补齐。')
     industries,peers=load_industry_history(client,[s['symbol'] for s in chosen],progress)
     for stock in chosen:
@@ -170,6 +172,9 @@ def prepare_experiment(workspace, end, progress=print, cfg=None, experiment=EXPE
     if quality_first:
         cohort.update(candidate_count=len(candidates),evaluated_count=len(chosen)+len(rejected),target_count=target,
             method='先通过既有五年连续盈利/现金分红、审计、三年现金覆盖和债务财务门槛，再按当时股息率降序、PE升序选最多20只；不要求建池时满足5%买价，不足不补齐。')
+        if target is None:
+            cohort.update(holding_limit=rules['max_holdings'],
+                method='检查全部年末初筛候选，保留全部财务合格者；月末再检查完整入场条件并排序，由资金、行业与整手约束选最多20只持仓，不提前截断候选。')
     old_cohort=path/'cohort.json'
     if old_cohort.exists() and read_json(old_cohort)!=cohort:
         raise AppError('历史名单发生修订，不能覆盖旧实验。')
@@ -229,7 +234,8 @@ def prepare_annual_experiment(workspace, end, progress=print, cfg=None, experime
         _,_,cohort,market,fin,aliases,valuation,turnover,sectors,peer_rows=prepared
         until=dates[i+1] if i+1<len(dates) else None
         rebalances.append({'day':day,'until':until,'symbols':[s['symbol'] for s in cohort['stocks']],
-                           'candidate_count':cohort['candidate_count'],'rejected':cohort['rejected']})
+                           'candidate_count':cohort['candidate_count'],'rejected':cohort['rejected'],
+                           **({'evaluated_count':cohort['evaluated_count']} if 'evaluated_count' in cohort else {})})
         for stock in cohort['stocks']:
             code=stock['symbol']
             data['universe_membership'].setdefault(code,[]).append({'start':day,'end':until})
@@ -246,8 +252,11 @@ def prepare_annual_experiment(workspace, end, progress=print, cfg=None, experime
             existing.extend(row for row in rows if row not in existing)
         progress(f'年度研究池 {day}：{len(cohort["stocks"])} 只，累计涉及 {len(stocks)} 只；账本不重置',flush=True)
     if not stocks:data['errors']['cohort']='全部建池期均无可核实合格候选，未生成成功策略收益。'
-    cohort={'selected_on':sessions[0],'stocks':list(stocks.values()),'rebalances':rebalances,'target_count':experiment['pool_size'],
+    cohort={'selected_on':sessions[0],'stocks':list(stocks.values()),'rebalances':rebalances,'target_count':experiment.get('cohort_limit',experiment['pool_size']),
             'method':'每年末以当时公告重选最多20只；股票从首次入池到回放结束持续跟踪，使用同一连续模拟账户。'}
+    if cohort['target_count'] is None:
+        cohort.update(holding_limit=load_rules()['max_holdings'],
+            method='每年末检查全部初筛候选并保留财务合格者；月末完成入场筛选后由资金与行业约束分配最多20只持仓，账户不重置。年中不额外扫描全市场。')
     for filename,content in (('cohort',cohort),('market',data),('financials',dossiers),('names',names),
                              ('valuation-history',history),('amounts',amounts),('industry-history',{'stocks':industries,'peers':peers})):
         atomic_json(path/(filename+'.json'),json.loads(json.dumps(content,default=str)))
@@ -400,12 +409,16 @@ def run_experiment(workspace, end, cfg, progress=print, experiment=EXPERIMENT):
               'price_rows':sum(len(rows) for rows in data['bars'].values()),
               'valuation_rows':sum(len(rows) for rows in history.values()),'input_errors':data.get('errors',{}),
               'pool_sizes':[{'day':r['day'],'stocks':len(r['symbols'])} for r in cohort.get('rebalances',[])]}
+    scope=('名单按各年末当时指标重新筛选，最多20只在选股票，退出后仍跟踪持仓；' if cohort.get('rebalances')
+           else f"名单按{experiment['selection_day']}指标重建，未使用今天研究池；")
+    if experiment.get('cohort_limit',experiment['pool_size']) is None:
+        scope='每年末检查全部初筛候选，财务合格者不按20截断；月末完整筛选后最多20只持仓，年中未额外扫描全市场；'
     output={'status':'diagnostic' if periods else 'blocked','title':'独立历史股票池 · 原始价格成交回放','as_of':end,'protocol':experiment,'runs':runs,
         'initial_cash':cfg['paper_cash'],'primary_metrics':primary_metrics,'selection_audit':cohort,
         'coverage':coverage,'message':f"区间 {data['sessions'][0]}—{end}，{len(data['sessions'])} 个交易日、累计涉及{len(cohort['stocks'])}只股票。输入疑点 {len(data.get('errors',{}))} 项。",
         'comparison_series':comparison_series,'diagnostics':diagnostics,'period_diagnostics':periods,
         'limitations':['当前仅为历史诊断，不能据此宣布年化10%达成。',
-                       ('名单按各年末当时指标重新筛选，最多20只在选股票，退出后仍跟踪持仓；' if cohort.get('rebalances') else f"名单按{experiment['selection_day']}指标重建，未使用今天研究池；")+'原始历史财报版本未逐份公告存档核验，仍存在修订数据和缺口选样风险。',
+                       scope+'原始历史财报版本未逐份公告存档核验，仍存在修订数据和缺口选样风险。',
                        '行业使用申万一级历史纳入/剔除区间，缺失/冲突不取当前标签；入池后行业变更会冻结交易，供应商历史分类修订仍需原始存档验证。',
                        f"本次运行前登记开发段截至{experiment['development_end']}、留出段自{experiment['validation_start']}；全部4%/5%/6%结果公开。此前已查看过部分历史结果，此留出段不是真正未见数据；年度和滚动统计切分同一账户曲线，没有逐窗训练参数，不是真正独立盲测。",
                        experiment.get('monthly_targets','月末重新分配目标；除资料待核实的冻结持仓外，不再满足买入条件会退出。这不是仅在预测股息率低于3%才卖出的持有策略。'),

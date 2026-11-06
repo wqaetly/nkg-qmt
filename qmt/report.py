@@ -157,6 +157,7 @@ def research_panel(research, backtest, chart_symbols=(), history=''):
          run.get('message',EXPERIMENT_STATES.get(run.get('status'),run.get('status','')))] for run in runs]) if runs else '<p class="muted">尚无可展示的历史回测结果。</p>'
     diagnostics=backtest.get('diagnostics',{})
     selection=backtest.get('selection_audit',{})
+    protocol=backtest.get('protocol',{})
     diagnoses=''
     if diagnostics or selection:
         states='；'.join(f'{state} {count} 次' for state,count in diagnostics.get('states',{}).items())
@@ -181,13 +182,20 @@ def research_panel(research, backtest, chart_symbols=(), history=''):
         reason_rows.extend([stage,r.get('reason'),r.get('count')] for key,stage in (('reasons','筛选未通过（公司 / 时点）'),('skips','执行跳过（事件）')) for r in diagnostics.get(key,[]))
         reasons=table(['阶段','未通过 / 未成交原因','次数'],reason_rows)
         selected=len(selection.get('stocks',[]))
-        selection_note=f"建池 {selected} 只 / 目标 {selection.get('target_count',backtest.get('protocol',{}).get('pool_size','—'))} 只；候选 {selection.get('candidate_count','—')} 家，已评估 {selection.get('evaluated_count',selected+len(selection.get('rejected',[])))} 家。" if selection else ''
+        cohort_limit=protocol.get('cohort_limit',20)
+        target_count=selection.get('target_count',protocol.get('pool_size',cohort_limit))
+        selection_note=f"建池 {selected} 只 / 目标 {target_count if target_count is not None else '—'} 只；候选 {selection.get('candidate_count','—')} 家，已评估 {selection.get('evaluated_count','—')} 家。" if selection else ''
         pool_table=''
         if rebalances:
-            selection_note=f"历年涉及 {selected} 只；每期最多 {selection.get('target_count','—')} 只，共 {len(rebalances)} 次建池。评估总数还包含退出研究池后继续跟踪的公司。"
-            pool_table=table(['建池日','实际入池','候选','未入池候选'],[[pool.get('day'),len(pool.get('symbols',[])),pool.get('candidate_count'),
-                max(0,pool['candidate_count']-len(pool.get('symbols',[]))) if isinstance(pool.get('candidate_count'),int) else None] for pool in rebalances])
-            pool_table+='<p class="muted">未入池候选含条件不满足或排序未选中，不等于财务不合格；年度淘汰原因按公司 / 建池时点计数，同一公司可能重复出现。</p>'
+            selection_note=(f"历年候选池覆盖 {selected} 只；年末初筛候选全部检查，合格候选池不设数量上限，共 {len(rebalances)} 次建池。" if cohort_limit is None else
+                            f"历年涉及 {selected} 只；每期最多 {target_count if target_count is not None else '—'} 只，共 {len(rebalances)} 次建池。")
+            if selection.get('holding_limit') is not None:
+                selection_note+=f"持仓最多 {selection['holding_limit']} 只。"
+            selection_note+='评估总数还包含退出研究池后继续跟踪的公司。'
+            pool_table=table(['建池日','实际入池','候选','未入池候选','已检查'],[[pool.get('day'),len(pool.get('symbols',[])),pool.get('candidate_count'),
+                max(0,pool['candidate_count']-len(pool.get('symbols',[]))) if isinstance(pool.get('candidate_count'),int) else None,
+                pool.get('evaluated_count')] for pool in rebalances])
+            pool_table+='<p class="muted">仅在年末重筛候选池，月度评估当期候选；不是每月扫描全市场。实际入池是候选覆盖，不是实际持仓；已检查数使用实验记录，旧记录未保存时显示“—”。未入池候选含条件不满足或排序未选中，不等于财务不合格；年度淘汰原因按公司 / 建池时点计数，同一公司可能重复出现。</p>'
         diagnoses=f'''<details class="research-results" id="research-diagnostics"><summary>建池淘汰、筛选与未成交原因</summary><p>{esc(selection_note)}</p><p>共 {esc(diagnostics.get('evaluations'))} 次公司 / 时点评估。{esc(states)}</p>
         {funnel}{pool_table}{conflicts}<p class="muted">建池淘汰按{'公司 / 建池时点' if rebalances else '公司'}计数，筛选按公司 / 时点计数，执行跳过按事件计数，三者不能相加。数据不足、未达到价格要求和资金不够买一手是不同原因；不能为了产生交易把它们视为通过。</p>{reasons}</details>'''
     limitations=research.get('limitations',[])+backtest.get('limitations',[])
@@ -196,7 +204,6 @@ def research_panel(research, backtest, chart_symbols=(), history=''):
     backtest_state=EXPERIMENT_STATES.get(backtest_state,backtest_state)
     historical_count=backtest.get('coverage',{}).get('stocks')
     historical_note=f'历史涉及 {historical_count} 只；与当日模拟账户分开记录' if historical_count is not None else '与当日模拟账户分开记录'
-    protocol=backtest.get('protocol',{})
     retention=percent(protocol.get('retention_yield'))
     holding_note=f'<span>持有门槛 {retention} / 仅月末检查</span>' if retention!='—' else ''
     target_note=f'<p>回放调仓规则：{esc(protocol["monthly_targets"])}</p>' if protocol.get('monthly_targets') else ''
