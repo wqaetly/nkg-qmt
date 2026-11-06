@@ -78,7 +78,7 @@ class AnnualExperimentTests(unittest.TestCase):
         history={c:[{'ts_code':c,'trade_date':d,'pe_ttm':10,'dv_ttm':5} for d in SESSIONS] for c in (A,B)}
         client=Mock();client.calendar.return_value=SESSIONS;client.prices.return_value={}
         calls=[]
-        def assess(row,dossier,rules):
+        def assess(row,dossier,rules,**kwargs):
             calls.append((row['symbol'],row['as_of']))
             unknown=row['symbol']==A and row['as_of']==DATES[1]
             return {'state':'待数据核实' if unknown else '满足价格条件','reason':'测试数据状态',

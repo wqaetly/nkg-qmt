@@ -16,30 +16,30 @@ from .service import read_json
 from .industry import industry_at, load_industry_history
 
 
-EXPERIMENT = {'version':'historical-dividend-v17','selection_day':'20221230','development_end':'20241231',
+EXPERIMENT = {'version':'historical-dividend-v18','selection_day':'20221230','development_end':'20241231',
               'validation_start':'20250101','pool_size':20,'entry_yields':['0.04','0.05','0.06'],
-              'primary_entry_yield':'0.05','target_cagr':'0.10','benchmark':'515180.SH'}
-LONG_EXPERIMENT = {**EXPERIMENT,'version':'historical-dividend-v17-long','selection_day':'20141231',
+              'primary_entry_yield':'0.05','target_cagr':'0.10','benchmark':'515180.SH','earnings_basis':'conservative_minimum'}
+LONG_EXPERIMENT = {**EXPERIMENT,'version':'historical-dividend-v18-long','selection_day':'20141231',
                    'development_end':'20191231','validation_start':'20200101','benchmark':'510880.SH'}
-QUALITY_EXPERIMENT = {**EXPERIMENT,'version':'historical-dividend-v17-quality','quality_first':True}
-QUALITY_LONG_EXPERIMENT = {**LONG_EXPERIMENT,'version':'historical-dividend-v17-quality-long','quality_first':True}
-ANNUAL_EXPERIMENT = {**QUALITY_EXPERIMENT,'version':'historical-dividend-v17-annual','pool_refresh':'year_end',
+QUALITY_EXPERIMENT = {**EXPERIMENT,'version':'historical-dividend-v18-quality','quality_first':True}
+QUALITY_LONG_EXPERIMENT = {**LONG_EXPERIMENT,'version':'historical-dividend-v18-quality-long','quality_first':True}
+ANNUAL_EXPERIMENT = {**QUALITY_EXPERIMENT,'version':'historical-dividend-v18-annual','pool_refresh':'year_end',
     'pool_exit':'退出名单的资料待核实持仓继续冻结跟踪；其他退出名单股票按下一交易日限价退出。行业沿用首次归属，变更冻结。',
     'monthly_targets':'沿用原回放月末重配：除冻结持仓外，仅当月仍满足全部买入条件者保留目标；不宣称只在3%股息率以下退出。'}
-ANNUAL_LONG_EXPERIMENT = {**ANNUAL_EXPERIMENT,'version':'historical-dividend-v17-annual-long',
+ANNUAL_LONG_EXPERIMENT = {**ANNUAL_EXPERIMENT,'version':'historical-dividend-v18-annual-long',
     'selection_day':LONG_EXPERIMENT['selection_day'],'development_end':LONG_EXPERIMENT['development_end'],
     'validation_start':LONG_EXPERIMENT['validation_start'],'benchmark':LONG_EXPERIMENT['benchmark']}
 
 
-HOLD_EXPERIMENT = {**ANNUAL_EXPERIMENT,'version':'historical-dividend-v17-annual-hold','retention_yield':'0.03',
+HOLD_EXPERIMENT = {**ANNUAL_EXPERIMENT,'version':'historical-dividend-v18-annual-hold','retention_yield':'0.03',
     'monthly_targets':'月末检查：当期成员财务已核实、流动性通过且当日情景股息率至少3%可保留；估值及历史股息入场条件不单独触发卖出。仅持有资格不允许加仓；仍满足完整入场条件者沿用原重配。保留股先占额度，按原月度单股预算与行业额度整手修剪，资料待核实仍冻结；不是每日风险退出。'}
-HOLD_LONG_EXPERIMENT = {**ANNUAL_LONG_EXPERIMENT,'version':'historical-dividend-v17-annual-long-hold',
+HOLD_LONG_EXPERIMENT = {**ANNUAL_LONG_EXPERIMENT,'version':'historical-dividend-v18-annual-long-hold',
                        'retention_yield':HOLD_EXPERIMENT['retention_yield'],'monthly_targets':HOLD_EXPERIMENT['monthly_targets']}
 
 
-def cohort_assessment(row, dossier, rules):
+def cohort_assessment(row, dossier, rules, *, earnings_basis='conservative_minimum'):
     """Reuse financial gates before ranking; price is evaluated later at each signal."""
-    result=dividend_assessment(row,dossier,rules)
+    result=dividend_assessment(row,dossier,rules,earnings_basis=earnings_basis)
     return {'eligible':result['state'] in ('满足价格条件','等待价格'),
             'state':result['state'],'reason':result['reason'],'evidence_hash':result['evidence_hash']}
 
@@ -85,6 +85,8 @@ def protocol(cfg, experiment=EXPERIMENT, end=None):
 
 
 def register_experiment(workspace, end, cfg, experiment):
+    if experiment.get('earnings_basis','conservative_minimum') not in ('conservative_minimum','ttm'):
+        raise AppError('未知实验盈利口径，未登记或回退为默认规则。')
     path=workspace/'backtests'/experiment['version']
     path.mkdir(parents=True,exist_ok=True)
     manifest=path/'protocol.json'
@@ -149,7 +151,7 @@ def prepare_experiment(workspace, end, progress=print, cfg=None, experiment=EXPE
         row=summarize({**dossier,'as_of':day},{**basics[code],'name':name},quotes[code])
         quality={}
         if quality_first:
-            quality=cohort_assessment(row,dossier,rules)
+            quality=cohort_assessment(row,dossier,rules,earnings_basis=experiment.get('earnings_basis','conservative_minimum'))
             if not quality['eligible']:
                 rejected.append({'symbol':code,**quality});continue
         elif row.get('financial_company') or row['status']=='排除' or len(row['annual'])<5:
@@ -308,7 +310,7 @@ def experiment_signals(client, cohort, data, dossiers, names, history, amounts, 
                        'industry_median_pe':str(median(peers_pe)) if peers_pe else None}
             liq=liquidity(amounts[code],[s for s in extended if s<=day][-20:],rules)
             row['selection']={'valuation':valuation,'liquidity':liq,'coarse_pass':bool(pe and positive(q.get('dv_ttm')) and dec(q['dv_ttm'])>=3)}
-            a=assess(row,{**dossiers[code],'as_of':day},rules)
+            a=assess(row,{**dossiers[code],'as_of':day},rules,earnings_basis=experiment.get('earnings_basis','conservative_minimum'))
             if not name:a.update(state='待数据核实',reason='当时名称不可核实')
             if not sector or sector['label']!=stock['industry']:
                 a.update(state='待数据核实',reason='入池后行业变更或区间未知；保留持仓并停止新增，须重核行业风险')

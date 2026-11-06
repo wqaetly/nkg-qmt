@@ -14,7 +14,9 @@ from .selection import load_rules, automatic_path
 from vendor.dividend_stock_research.dividend_price import calculate
 
 
-def dividend_assessment(row, dossier, rules):
+def dividend_assessment(row, dossier, rules, *, earnings_basis='conservative_minimum'):
+    if earnings_basis not in ('conservative_minimum','ttm'):
+        raise AppError('未知实验盈利口径，未回退为默认规则。')
     result = {'symbol':row['symbol'],'name':row['name'],'industry':row['industry'],
               'state':'待数据核实','reason':'','scenarios':[], 'evidence_hash':row.get('evidence_hash','')}
     def stop(state, reason):
@@ -70,7 +72,8 @@ def dividend_assessment(row, dossier, rules):
             deducted_ttm = signed(indicators[latest]['profit_dedt'])+signed(indicators[annual_period]['profit_dedt'])-signed(indicators[previous_period]['profit_dedt'])
         else:
             profit_ttm, deducted_ttm = signed(inc[latest]['n_income_attr_p']), signed(indicators[latest]['profit_dedt'])
-        earnings = min(median(profits[:3]),profits[0],profit_ttm,deducted_ttm)
+        earnings = (min(profit_ttm,deducted_ttm) if earnings_basis=='ttm'
+                    else min(median(profits[:3]),profits[0],profit_ttm,deducted_ttm))
         if earnings <= 0:
             return stop('排除','滚动归母或扣非利润非正')
         b = balance[latest]
@@ -93,8 +96,8 @@ def dividend_assessment(row, dossier, rules):
         return stop('待数据核实','历史股数、TTM、短期债务或财务字段缺失/无效；不补零')
 
 
-def assess(row, dossier, rules):
-    result=dividend_assessment(row,dossier,rules)
+def assess(row, dossier, rules, *, earnings_basis='conservative_minimum'):
+    result=dividend_assessment(row,dossier,rules,earnings_basis=earnings_basis)
     financial_state=result['state']
     financial_reason=result['reason']
     selection=row.get('selection',{})

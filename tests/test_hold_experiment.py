@@ -35,7 +35,7 @@ class HoldExperimentTests(unittest.TestCase):
         if not active:data['universe_membership'][CODE][0]['end']=DAYS[1]
         if not known_valuation:history[CODE]=history[CODE][-3:]
         peers={code:[] for code in client.prices.return_value}
-        with patch('qmt.experiment.summarize',return_value={}),patch('qmt.experiment.assess',side_effect=lambda *args:copy.deepcopy(a)), \
+        with patch('qmt.experiment.summarize',return_value={}),patch('qmt.experiment.assess',side_effect=lambda *args,**kwargs:copy.deepcopy(a)), \
              patch('qmt.experiment.industry_at',return_value={'code':'sector','label':'测试行业'}), \
              patch('qmt.experiment.liquidity',return_value={'state':'通过'}):
             return experiment_signals(client,{'stocks':stocks},data,{CODE:{}},names,history,{CODE:{}},'.05',{CODE:[]},peers,lambda *a,**k:None,experiment)

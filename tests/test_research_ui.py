@@ -111,6 +111,49 @@ class ResearchUiTests(unittest.TestCase):
             self.assertIn('输入待核实</td><td>—</td><td>—</td><td>—',blocked)
             self.assertNotIn('40.00%',blocked)
 
+    def test_history_displays_each_protocols_earnings_basis_without_rewriting_archives(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace=Path(tmp)
+            for version,basis,cost in [('v17',None,1),('v18','ttm',2),('unknown','<script>basis</script>',3)]:
+                folder=workspace/'backtests'/version;folder.mkdir(parents=True)
+                protocol={'version':version,**({'earnings_basis':basis} if basis is not None else {})}
+                (folder/'protocol.json').write_text(json.dumps(protocol),encoding='utf-8')
+                (folder/'summary.json').write_text(json.dumps({'status':'diagnostic','primary_metrics':{'costs':cost}}),encoding='utf-8')
+            before={path:path.read_bytes() for path in workspace.rglob('*.json')}
+            page=experiment_history_panel(workspace)
+            self.assertIn('<th>盈利口径</th>',page)
+            self.assertIn('1.00</td><td>历史及 TTM 取低</td>',page)
+            self.assertIn('2.00</td><td>最近十二个月取低</td>',page)
+            self.assertIn('3.00</td><td>未识别口径</td>',page)
+            self.assertIn('未声明盈利口径的旧归档按“历史及 TTM 取低”解释',page)
+            self.assertIn('口径变化不是收益验证',page)
+            self.assertNotIn('<script>basis</script>',page)
+            self.assertEqual(before,{path:path.read_bytes() for path in workspace.rglob('*.json')})
+
+    def test_latest_earnings_basis_is_explicit_and_does_not_claim_normalization_or_validation(self):
+        for protocol in ({},{'earnings_basis':'conservative_minimum'}):
+            page=research_panel(self.research(),{'protocol':protocol})
+            self.assertIn('盈利口径：历史及 TTM 取低',page)
+            self.assertIn('归母 TTM、扣非 TTM 四者最低值',page)
+        backtest={'protocol':{'earnings_basis':'ttm'},'runs':[{'label':'5%主方案','metrics':{'cagr':'.12'}}],
+                  'comparison_series':[{'label':'策略','kind':'strategy','points':[{'day':'20230103','value':1}]}]}
+        before=json.dumps(backtest,sort_keys=True)
+        page=research_panel(self.research(),backtest)
+        self.assertIn('盈利口径：最近十二个月取低',page)
+        self.assertIn('id="earnings-basis"',page)
+        self.assertIn('只取归母 TTM 与扣非 TTM 较低值，不再与历史年度利润取更低值',page)
+        self.assertIn('不等同于正常化盈利，也不代表收益已验证',page)
+        self.assertIn('12.00%',page)
+        self.assertIn('待验证，不是收益承诺',page)
+        self.assertEqual(page.count('class="research-stock"'),20)
+        payload=page.split('id="comparison-data">',1)[1].split('</script>',1)[0]
+        self.assertEqual(json.loads(payload),backtest['comparison_series'])
+        self.assertEqual(before,json.dumps(backtest,sort_keys=True))
+        unknown=research_panel({}, {'protocol':{'earnings_basis':'<script>basis</script>'}})
+        self.assertIn('盈利口径：未识别口径',unknown)
+        self.assertNotIn('<script>basis</script>',unknown)
+        self.assertNotIn('id="earnings-basis"',research_panel(self.research(),{}))
+
     def test_selection_rejections_and_execution_skips_are_counted_in_separate_units(self):
         backtest={'status':'diagnostic','coverage':{'stocks':7},
                   'selection_audit':{'candidate_count':30,'evaluated_count':12,'target_count':20,

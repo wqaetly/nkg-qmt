@@ -29,6 +29,8 @@ def parser():
     backtest.add_argument('--annual-pool',action='store_true',help='财务门槛前置，每年末重新建池；同一账本连续回放，不重置现金')
     backtest.add_argument('--all-candidates',action='store_true',help='与 --annual-pool 同用：检查全部年末初筛候选，完整入场筛选后分配最多20只持仓')
     backtest.add_argument('--hold-band',action='store_true',help='与 --annual-pool 同用：月末对已有健康持仓使用3%保留门槛，新买仍按原条件')
+    backtest.add_argument('--earnings-basis',choices=('conservative_minimum','ttm'),default='conservative_minimum',
+                          help='独立盈利口径对照：ttm仅取滚动归母/扣非较低值；默认同时受历史利润约束，不修改日常规则')
     research = sub.add_parser('research',help='搜索公开资料并由已配置的 AI 生成研究草稿')
     research.add_argument('symbol',type=symbol_key)
     review = sub.add_parser('review-template',help='生成待人工核查的三情景模板，不覆盖已有模板')
@@ -134,6 +136,8 @@ def run(args):
             if args.all_candidates:
                 if not args.annual_pool:raise AppError('--all-candidates 须与 --annual-pool 同用，持仓上限仍为20。')
                 experiment={**experiment,'version':experiment['version']+'-all','cohort_limit':None}
+            if args.earnings_basis=='ttm':
+                experiment={**experiment,'version':experiment['version']+'-ttm','earnings_basis':'ttm'}
             run_experiment(workspace,report['as_of'],cfg,experiment=experiment)
         elif args.command=='lab':
             from .lab import run_lab
