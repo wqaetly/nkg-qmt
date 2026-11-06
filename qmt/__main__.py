@@ -21,6 +21,8 @@ def parser():
     daily.add_argument('--limit',type=int,help='仅用于调试的覆盖数量；默认完整筛选后的研究批次')
     daily.add_argument('--refresh',action='store_true',help='忽略当天缓存重新取数')
     sub.add_parser('report',help='根据已有数据重新生成本地报告')
+    forecast = sub.add_parser('forecast-check',help='离线检验固定年末股息估计与后来派息代理，不运行交易或改变规则')
+    forecast.add_argument('--version',default='historical-dividend-v19-annual-all',help='已有完整年度候选实验目录名')
     lab=sub.add_parser('lab',help='冻结二十只研究名单并更新K线，不运行定时任务或新增订单')
     lab.add_argument('--enrich',action='store_true',help='使用已配置搜索和AI补充公开资料草稿')
     backtest=sub.add_parser('backtest',help='独立历史二十股研究池与含费用回放，不更改模拟账本')
@@ -94,6 +96,11 @@ def run(args):
         return 0
     workspace = args.workspace.resolve()
     workspace.mkdir(parents=True,exist_ok=True)
+    if args.command=='forecast-check':
+        from .forecast_diagnostic import run_diagnostic
+        result=run_diagnostic(workspace,args.version)
+        print(json.dumps(result['coverage'],ensure_ascii=False))
+        return 0
     if (workspace/'.demo-mode').is_file():
         raise AppError('演示目录不能用于真实数据或手动账本。')
     if (workspace/'.automatic-paper').is_file():

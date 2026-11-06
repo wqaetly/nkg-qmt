@@ -1,0 +1,24 @@
+[
+  {
+    "symbol": "002030.SZ",
+    "target_year": 2024,
+    "cash_dps": "0",
+    "available_on": "20260428",
+    "source": "https://static.cninfo.com.cn/finalpage/2026-04-28/1225220200.PDF",
+    "source_sha256": "b6c4e58a8a338f3b4ce796df89d893b01f875134045242042009a54169e60bbd",
+    "page": 2,
+    "target_rows_sha256": "07b54fe44119f7a608e00d8ab7a766920e6b1efe8de214d6e4348255d3eef38b",
+    "note": "2025年度利润分配公告三年比较表：上年度（2024）现金分红总额为0元；回购并注销总额单列。以2026年后来确认日作为标签可用日，不回填至2024年预测。"
+  },
+  {
+    "symbol": "600438.SH",
+    "target_year": 2024,
+    "cash_dps": "0",
+    "available_on": "20260430",
+    "source": "https://static.cninfo.com.cn/finalpage/2026-04-30/1225259227.PDF",
+    "source_sha256": "6eb25b10c46be16e55faab20b55cf9b974c8b13dbbfcfde433b942634152c077",
+    "page": 2,
+    "target_rows_sha256": "44c2c73370be6c544e963ff3ccbc5dae7ea33ba723062227872e5c85365558bc",
+    "note": "2025年年度利润分配公告三年比较表：2024年度现金分红总额为0元；回购注销总额单列，不能当持有人收到的股息。"
+  }
+]

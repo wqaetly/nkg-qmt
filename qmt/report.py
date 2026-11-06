@@ -124,6 +124,59 @@ def period_diagnostics_panel(data):
     {summary if has_rolling else ''}{'<p class="muted">滚动三年统计汇总同一条历史资产曲线的不同窗口。重叠窗口不是独立样本，正收益占比不是未来盈利概率。</p>' if has_rolling else ''}</details>'''
 
 
+def forecast_diagnostic_panel(data):
+    if not data:
+        return ''
+    opening='<details class="panel research-results" id="forecast-diagnostic"><summary>股息估计回溯诊断</summary>'
+    if data.get('version')!='dividend-forecast-v1' or data.get('status')!='diagnostic':
+        return opening+'<p class="muted">诊断记录不可用，未用旧结果或零误差替代。</p></details>'
+    coverage=data.get('coverage',{})
+    rows=[]
+    yearly_coverage=[]
+    pending_counts=Counter()
+    for year in data.get('by_year',[]):
+        yearly_coverage.append(f"FY{year.get('target_year','—')}：{year.get('proxy_scored','—')} / {year.get('candidates','—')}")
+        pending_counts.update({state:count for state,count in year.get('status_counts',{}).items()
+                               if state not in ('proxy_total_cash','verified_zero_cash') and type(count) is int and count>0})
+        for method,label in data.get('methods',{}).items():
+            metrics=year.get('metrics',{}).get(method,{})
+            count=metrics.get('count',0)
+            scored=type(count) is int and count>0
+            errors=[]
+            for key in ('bias_yield_bp','mae_yield_bp'):
+                try:
+                    value=metrics.get(key)
+                    errors.append(number(value) if scored and math.isfinite(float(value)) else '—')
+                except (TypeError,ValueError,OverflowError):
+                    errors.append('—')
+            state='代理对照' if scored else '待观察' if year.get('status_counts',{}).get('pending_year_incomplete') else '待核实'
+            rows.append([f"{year.get('origin','—')} → FY{year.get('target_year','—')}",label,count,*errors,state])
+    comparison=table(['预测原点 → 目标年度','估计口径','代理样本数','平均误差 / 基点','平均绝对误差 / 基点','状态'],rows)
+    pending_labels={'pending_zero_or_annual_confirmation':'年度 / 零预案待核实','pending_stock_actions':'送转待核实',
+                    'pending_year_incomplete':'目标年度未完成','pending_payment':'现金尚未支付','pending_data_conflict':'数据冲突待核实'}
+    pending_note='；'.join(f'{pending_labels.get(state,state)} {count} 组' for state,count in pending_counts.items()) or '未记录待核实原因'
+    zero_cases=[]
+    for case in data.get('verified_zero_cases',[]):
+        label=case.get('label',{})
+        source=safe_url(label.get('source'))
+        source_note=f"原文 · {label.get('available_on','—')} · 第 {label.get('page','—')} 页"
+        link=f'<a href="{esc(source)}" target="_blank" rel="noreferrer">{esc(source_note)}</a>' if source else '原文链接未记录'
+        cells=[f"{case.get('name','—')} · {case.get('symbol','—')}",f"FY{case.get('target_year','—')} · 原点 {case.get('origin','—')}",
+               *[number(case.get('estimates_dps',{}).get(method),3) for method in data.get('methods',{})],number(label.get('observed_cash_dps'),3)]
+        zero_cases.append('<tr>'+''.join(f'<td>{esc(cell)}</td>' for cell in cells)+f'<td>{link}</td></tr>')
+    zero_panel=''
+    if zero_cases:
+        headings=['公司','目标年度 / 预测原点',*[f'{label} / 元' for label in data.get('methods',{}).values()],'实际全年每股派息 / 元','核实依据']
+        zero_panel='<h4>原文核实的零派息反例</h4><div class="table-scroll"><table><thead><tr>'+''.join(f'<th>{esc(label)}</th>' for label in headings)+'</tr></thead><tbody>'+''.join(zero_cases)+'</tbody></table></div><p class="muted">零派息反例单列，不混入下方未分类现金派息代理误差。</p>'
+    notes=''.join(f'<li>{esc(note)}</li>' for note in data.get('limitations',[]))
+    return f'''{opening}<p><strong>原文核实全年零派息 {esc(coverage.get('verified_zero',0))} 组；已观察现金派息代理 {esc(coverage.get('proxy_scored'))} 组。</strong>
+    共 {esc(coverage.get('predictions'))} 组预测，未评分 {esc(coverage.get('pending'))} 组。每组为一家公司、一个预测原点。</p>
+    <p class="muted">来源 {esc(data.get('source_version'))} · 结果资料截至 {esc(data.get('outcome_as_of'))}。{esc(data.get('horizon',''))}</p>
+    <p class="muted">年度覆盖（派息代理 / 全部候选）：{esc('；'.join(yearly_coverage))}。</p><p class="muted">未评分原因：{esc(pending_note)}。</p>
+    {zero_panel}<p class="muted">仅对资料符合条件的现金派息代理计算误差；其余停派 / 零分红待核实样本仍未纳入，不能据此选出更优规则。</p>{comparison}
+    <p class="muted">误差 =（预计每股派息 − 已观察现金派息）÷ 原点股价 × 10,000；正值表示高估。无可评分样本显示 —，不等于零误差。代理对照不证明普通股息预测准确，也不自动改变交易规则。</p><ul>{notes}</ul></details>'''
+
+
 def data_warnings_panel(warnings):
     if not warnings:
         return ''
@@ -377,6 +430,7 @@ def render(workspace, ledger, report, status=None):
     demo = source == "DEMO"
     research=optional_report(workspace/'research'/'latest.json') if not demo else {}
     backtest=optional_report(workspace/'backtests'/'latest.json') if not demo else {}
+    forecast=optional_report(workspace/'forecast-diagnostic.json') if not demo else {}
     charts=optional_report(workspace/'charts.json')
     chart_symbols={code for code,stock in charts.get('stocks',{}).items() if stock.get('candles') and not stock.get('error')} if charts.get('as_of')==report.get('as_of')==research.get('as_of') else set()
     auto_file=automatic_path(workspace)/'latest.json'
@@ -444,6 +498,7 @@ def render(workspace, ledger, report, status=None):
     <section class="hero"><div><p class="eyebrow">RESEARCH FIRST, EXECUTION SECOND</p><h1>先看分红能否持续，<br>再等价格满足假设。</h1><p>从沪深主板寻找低估值、持续高股息与强流动性，保留反对证据与资料缺口。<br>研究、模拟、手动成交，分开记录。</p></div><div class="date-card"><small>行情截至</small><strong>{esc(report.get('as_of','尚未运行'))}</strong><span>{esc(source)} · 市场快照 {esc(report.get('pool_date','—'))}</span><span>生成于 {esc(report.get('generated_at','—'))}</span></div></section>
     <div class="notice {'error' if not status.get('ok') or demo else ''}">{'虚构演示数据，不可用于真实交易。 ' if demo else ''}{esc(status.get('message',''))}</div>
     {research_panel(research,backtest,chart_symbols,experiment_history_panel(workspace) if not demo else '')}
+    {forecast_diagnostic_panel(forecast)}
     {chart_panel(workspace,report,report.get('demo_operations',{}) if demo else automatic,research)}
     {('<details class="panel account-fold"><summary>当日模拟账户与订单检查</summary>'+automatic_panel(automatic)+'</details>') if research and not demo else automatic_panel(automatic) if not demo else ''}
     <section class="metrics"><div><small>财报研究覆盖</small><strong>{report.get('covered',0)}<i> / {report.get('pool_size',0)}</i></strong><span>主板 {report.get('universe_count',0)} 家，财报批次不代表全市场</span></div><div><small>待核实 / 观察</small><strong>{sum(r['status'] in ('待核实','观察') for r in rows)}</strong><span>资料不齐时不生成价格结论</span></div><div><small>排除</small><strong>{sum(r['status']=='排除' for r in rows)}</strong><span>保留具体原因，避免只看成功案例</span></div><div><small>可进一步评估</small><strong>{sum(r['status']=='可进一步评估' for r in rows)}</strong><span>满足研究条件 ≠ 自动买入</span></div></section>
