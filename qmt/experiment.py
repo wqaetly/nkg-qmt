@@ -7,7 +7,7 @@ from decimal import Decimal
 from statistics import median
 from collections import Counter
 
-from .automatic import assess
+from .automatic import assess, dividend_assessment
 from .config import AppError, atomic_json, date_key, dec, now_cn, load_config
 from .market import Tushare
 from .research import implemented_dividends, summarize, statements, DISCLOSURES
@@ -16,11 +16,20 @@ from .service import read_json
 from .industry import industry_at, load_industry_history
 
 
-EXPERIMENT = {'version':'historical-dividend-v7','selection_day':'20221230','development_end':'20241231',
+EXPERIMENT = {'version':'historical-dividend-v8','selection_day':'20221230','development_end':'20241231',
               'validation_start':'20250101','pool_size':20,'entry_yields':['0.04','0.05','0.06'],
               'primary_entry_yield':'0.05','target_cagr':'0.10','benchmark':'515180.SH'}
-LONG_EXPERIMENT = {**EXPERIMENT,'version':'historical-dividend-v7-long','selection_day':'20141231',
+LONG_EXPERIMENT = {**EXPERIMENT,'version':'historical-dividend-v8-long','selection_day':'20141231',
                    'development_end':'20191231','validation_start':'20200101','benchmark':'510880.SH'}
+QUALITY_EXPERIMENT = {**EXPERIMENT,'version':'historical-dividend-v9-quality','quality_first':True}
+QUALITY_LONG_EXPERIMENT = {**LONG_EXPERIMENT,'version':'historical-dividend-v9-quality-long','quality_first':True}
+
+
+def cohort_assessment(row, dossier, rules):
+    """Reuse financial gates before ranking; price is evaluated later at each signal."""
+    result=dividend_assessment(row,dossier,rules)
+    return {'eligible':result['state'] in ('满足价格条件','等待价格'),
+            'state':result['state'],'reason':result['reason'],'evidence_hash':result['evidence_hash']}
 
 
 def history_bounds(experiment):
@@ -98,26 +107,38 @@ def prepare_experiment(workspace, end, progress=print, cfg=None, experiment=EXPE
             candidates.append(code)
     candidates.sort(key=lambda code:(-dec(quotes[code]['dv_ttm']),dec(quotes[code]['pe_ttm']),code))
     chosen=[]; rejected=[]; dossiers={}; names={}
+    quality_first=experiment.get('quality_first',False)
+    target=experiment['pool_size']
     for code in candidates:
         name_rows=client.call('namechange',{'ts_code':code},'ts_code,name,start_date,end_date,ann_date')
         if any(r['ts_code']!=code for r in name_rows):raise AppError('历史名称代码不符。')
         name=historical_name(name_rows,day)
         if not name or 'ST' in name or '退' in name:
             rejected.append({'symbol':code,'reason':'历史名称缺失或当时有风险警示'});continue
-        income=statements(client.yearly('income',code,day[:4]+'0101',day,
-                          'ts_code,ann_date,f_ann_date,end_date,report_type,comp_type,revenue,n_income_attr_p,basic_eps'),day)
+        try:
+            income=statements(client.yearly('income',code,day[:4]+'0101',day,
+                              'ts_code,ann_date,f_ann_date,end_date,report_type,comp_type,revenue,n_income_attr_p,basic_eps'),day)
+        except AppError as exc:
+            if not quality_first:raise
+            rejected.append({'symbol':code,'state':'待数据核实','reason':str(exc)});continue
         if income and str(income[max(income)].get('comp_type')) in {'2','3','4','7'}:
             rejected.append({'symbol':code,'reason':'当时利润表为金融企业，模型不适用'});continue
-        dossier=client.dossier(code,end,start_year=financial_year)
+        dossier=client.dossier(code,day if quality_first else end,start_year=financial_year)
         row=summarize({**dossier,'as_of':day},{**basics[code],'name':name},quotes[code])
-        if row.get('financial_company') or row['status']=='排除' or len(row['annual'])<5:
+        quality={}
+        if quality_first:
+            quality=cohort_assessment(row,dossier,rules)
+            if not quality['eligible']:
+                rejected.append({'symbol':code,**quality});continue
+        elif row.get('financial_company') or row['status']=='排除' or len(row['annual'])<5:
             rejected.append({'symbol':code,'reason':'当时金融模型不适用、亏损或历史不足'});continue
         chosen.append({'symbol':code,'name':name,'industry':basics[code].get('industry') or '未知行业',
-                       'selection_quote':quotes[code],'selection_financial_period':row.get('latest_period')})
+                       'selection_quote':quotes[code],'selection_financial_period':row.get('latest_period'),
+                       **({'selection_quality':quality} if quality_first else {})})
         dossiers[code]=dossier; names[code]=name_rows
-        progress(f'历史研究池 {len(chosen)}/20：{code} {name}（按 {day} 可用指标）',flush=True)
-        if len(chosen)==20:break
-    if len(chosen)!=20:raise AppError('历史研究池不足20只，未用当前股票补齐。')
+        progress(f'历史研究池 {len(chosen)}/{target}：{code} {name}（按 {day} 可用指标）',flush=True)
+        if len(chosen)==target:break
+    if len(chosen)!=target and not quality_first:raise AppError('历史研究池不足20只，未用当前股票补齐。')
     industries,peers=load_industry_history(client,[s['symbol'] for s in chosen],progress)
     for stock in chosen:
         initial=industry_at(industries[stock['symbol']],day)
@@ -126,6 +147,9 @@ def prepare_experiment(workspace, end, progress=print, cfg=None, experiment=EXPE
     atomic_json(path/'industry-history.json',{'stocks':industries,'peers':peers})
     cohort={'selected_on':day,'stocks':chosen,'rejected':rejected,
             'method':'当时上市（含后来退市），20日流动性，正PE≤25、历史股息率≥3%；按当时股息率降序、PE升序选20只非金融且至少五年财报的公司。'}
+    if quality_first:
+        cohort.update(candidate_count=len(candidates),evaluated_count=len(chosen)+len(rejected),target_count=target,
+            method='先通过既有五年连续盈利/现金分红、审计、三年现金覆盖和债务财务门槛，再按当时股息率降序、PE升序选最多20只；不要求建池时满足5%买价，不足不补齐。')
     old_cohort=path/'cohort.json'
     if old_cohort.exists() and read_json(old_cohort)!=cohort:
         raise AppError('历史名单发生修订，不能覆盖旧实验。')
@@ -134,8 +158,10 @@ def prepare_experiment(workspace, end, progress=print, cfg=None, experiment=EXPE
     if calendar[0]!=day or calendar[-1]!=end:raise AppError('回放起止日必须是交易日。')
     bars={}; history={}; dividends={}
     input_errors=historical_input_issues([s['symbol'] for s in chosen],day,end)
+    if not chosen:input_errors['cohort']='建池日无可核实且通过财务门槛的候选，未把空名单当作成功回测。'
     for i,stock in enumerate(chosen,1):
         code=stock['symbol']
+        if quality_first:dossiers[code]=client.dossier(code,end,start_year=financial_year)
         bars[code]=client.bars(code,day,end)
         history[code]=client.yearly('daily_basic',code,valuation_start,end,'ts_code,trade_date,close,total_share,pe_ttm,pb,dv_ttm')
         rows=client.yearly('daily',code,liquidity_start,end,'ts_code,trade_date,amount')
@@ -151,7 +177,7 @@ def prepare_experiment(workspace, end, progress=print, cfg=None, experiment=EXPE
         except AppError as exc:
             input_errors[code]='；'.join(filter(None,[input_errors.get(code),str(exc)]))
             dividends[code]=[]
-        progress(f'历史行情与分红 {i}/20',flush=True)
+        progress(f'历史行情与分红 {i}/{len(chosen)}',flush=True)
     data={'universe_as_of':day,'sessions':calendar,'bars':bars,'industries':{s['symbol']:s['industry'] for s in chosen},'dividends':dividends,'errors':input_errors}
     # Raw cache + protocol preserve source parameters; derived file uses strings for exact monetary values.
     serial=json.loads(json.dumps(data,default=str))
@@ -224,21 +250,24 @@ def run_experiment(workspace, end, cfg, progress=print, experiment=EXPERIMENT):
     from .backtest import simulate, metrics, period_diagnostics
     from .comparison import build_comparisons
     path,client,cohort,data,dossiers,names,history,amounts,industries,peers=prepare_experiment(workspace,end,progress,cfg,experiment)
-    runs=[]; comparison_series=[]; diagnostics={}; periods={}
+    runs=[]; comparison_series=[]; diagnostics={}; periods={}; primary_metrics={}
     for rate in experiment['entry_yields']:
         signals,audits=experiment_signals(client,cohort,data,dossiers,names,history,amounts,rate,industries,peers,progress,experiment)
         name='yield-'+rate.replace('.','')
         atomic_json(path/(name+'-signals.json'),{'signals':signals,'audit':audits})
+        if rate==experiment['primary_entry_yield']:
+            assessments=[a for m in audits for a in m['assessments']]
+            diagnostics={'evaluations':len(assessments),'states':dict(Counter(a['state'] for a in assessments)),
+                         'reasons':[{'reason':reason,'count':count} for reason,count in Counter(a['reason'] for a in assessments if a['state']!='满足价格条件').most_common()],
+                         'skips':[]}
         try:
             result=simulate(data,signals,cfg,initial_cash=cfg['paper_cash'],max_holdings=load_rules()['max_holdings'])
             if rate==experiment['primary_entry_yield']:
+                primary_metrics=result['metrics']
                 periods={'label':'5%门槛主方案（含估计成本）',**period_diagnostics(result['equity_curve'],result['trades'])}
                 comparison_series.append({'label':'5%门槛主方案（含估计成本）','kind':'strategy','points':[
                     {'day':p['day'],'value':float(dec(p['equity'])/dec(result['initial_cash']))} for p in result['equity_curve']]})
-                assessments=[a for m in audits for a in m['assessments']]
-                diagnostics={'evaluations':len(assessments),'states':dict(Counter(a['state'] for a in assessments)),
-                             'reasons':[{'reason':reason,'count':count} for reason,count in Counter(a['reason'] for a in assessments if a['state']!='满足价格条件').most_common()],
-                             'skips':[{'reason':reason,'count':count} for reason,count in Counter(s['reason'] for s in result['skipped']).most_common()]}
+                diagnostics['skips']=[{'reason':reason,'count':count} for reason,count in Counter(s['reason'] for s in result['skipped']).most_common()]
             curve=result['equity_curve']
             development=[p for p in curve if p['day']<=experiment['development_end']]
             validation=[development[-1]]+[p for p in curve if p['day']>=experiment['validation_start']]
@@ -259,8 +288,9 @@ def run_experiment(workspace, end, cfg, progress=print, experiment=EXPERIMENT):
     coverage={'start':data['sessions'][0],'end':end,'sessions':len(data['sessions']),'stocks':len(cohort['stocks']),
               'price_rows':sum(len(rows) for rows in data['bars'].values()),
               'valuation_rows':sum(len(rows) for rows in history.values()),'input_errors':data.get('errors',{})}
-    output={'status':'diagnostic' if periods else 'blocked','title':'独立历史20股池 · 原始价格成交回放','as_of':end,'protocol':experiment,'runs':runs,
-        'coverage':coverage,'message':f"区间 {data['sessions'][0]}—{end}，{len(data['sessions'])} 个交易日、20只历史建池股票。输入疑点 {len(data.get('errors',{}))} 只。",
+    output={'status':'diagnostic' if periods else 'blocked','title':'独立历史股票池 · 原始价格成交回放','as_of':end,'protocol':experiment,'runs':runs,
+        'initial_cash':cfg['paper_cash'],'primary_metrics':primary_metrics,'selection_audit':cohort,
+        'coverage':coverage,'message':f"区间 {data['sessions'][0]}—{end}，{len(data['sessions'])} 个交易日、{len(cohort['stocks'])}只历史建池股票。输入疑点 {len(data.get('errors',{}))} 项。",
         'comparison_series':comparison_series,'diagnostics':diagnostics,'period_diagnostics':periods,
         'limitations':['当前仅为历史诊断，不能据此宣布年化10%达成。',
                        f"名单按{experiment['selection_day']}指标重建，未使用今天研究池；但原始历史财报版本未逐份公告存档核验，仍存在修订数据风险。",

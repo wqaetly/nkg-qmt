@@ -5,11 +5,67 @@ import unittest
 from decimal import Decimal
 
 from qmt.config import AppError
-from qmt.research import DISCLOSURES, implemented_dividends, normalize_stock_only, statements, summarize
+from qmt.research import DISCLOSURES, implemented_dividends, normalize_cash_overlaps, normalize_stock_only, statements, summarize
 from test_automatic import fixture
 
 
 class DisclosedDataTests(unittest.TestCase):
+    def test_shenhua_total_includes_special_and_keeps_exact_evidence(self):
+        correction=DISCLOSURES['cash_dividend_overlaps'][0]
+        originals=copy.deepcopy(correction['expected'])
+        events=implemented_dividends(originals,'20170703')
+        self.assertEqual(len(events),1)
+        event=events[0]
+        self.assertEqual(Decimal(str(event['cash_div_tax'])),Decimal('2.970'))
+        self.assertEqual(Decimal(event['ordinary_cash_div_tax']),Decimal('.460'))
+        self.assertEqual(Decimal(event['special_cash_div_tax']),Decimal('2.510'))
+        self.assertEqual(Decimal(event['ordinary_cash_div_tax'])+Decimal(event['special_cash_div_tax']),
+                         Decimal(str(event['cash_div_tax'])))
+        self.assertEqual([event[k] for k in ('end_date','record_date','ex_date','pay_date')],
+                         ['20161231','20170707','20170710','20170710'])
+        self.assertEqual(event['correction_originals'],originals)
+        self.assertEqual(event['correction_fingerprint'],hashlib.sha256(json.dumps(originals,sort_keys=True).encode()).hexdigest())
+        for key in ('source','available_on'):
+            self.assertEqual(event['correction_'+key],correction[key])
+        self.assertEqual(event['correction_source_pages'],'1—2')
+        self.assertEqual(originals,correction['expected'])
+        self.assertEqual(implemented_dividends(events,'20170703'),events)
+        self.assertEqual(implemented_dividends(originals[::-1],'20170703'),events)
+        self.assertEqual(implemented_dividends(originals,'20261106',earliest_period='19000101'),events)
+
+    def test_shenhua_classification_is_not_known_before_implementation_announcement(self):
+        originals=DISCLOSURES['cash_dividend_overlaps'][0]['expected']
+        self.assertEqual(normalize_cash_overlaps(originals,'20170702'),originals)
+        self.assertEqual(implemented_dividends(originals,'20170702'),[])
+        # An exact total alone still contains the disclosed special component.
+        self.assertEqual(implemented_dividends(originals[:1],'20170703')[0]['ordinary_cash_div_tax'],'0.460')
+        # A special component alone is not enough to invent a total row.
+        self.assertEqual(normalize_cash_overlaps(originals[1:],'20170703'),originals[1:])
+
+    def test_shenhua_unverified_overlap_and_extra_duplicates_still_fail(self):
+        originals=DISCLOSURES['cash_dividend_overlaps'][0]['expected']
+        for changes in ({'cash_div_tax':2.6},{'pay_date':'20170711'},{'ann_date':'20170319'},
+                        {'extra_source_field':'new schema'}):
+            rows=[originals[0],{**originals[1],**changes}]
+            self.assertEqual(normalize_cash_overlaps(rows,'20170703'),rows)
+            with self.subTest(changes=changes),self.assertRaises(AppError):
+                implemented_dividends(rows,'20170703')
+        rows=originals+[originals[1]]
+        self.assertEqual(normalize_cash_overlaps(rows,'20170703'),rows)
+        with self.assertRaises(AppError):implemented_dividends(rows,'20170703')
+        unknown=[{**r,'ts_code':'600099.SH'} for r in originals]
+        self.assertEqual(normalize_cash_overlaps(unknown,'20170703'),unknown)
+        with self.assertRaises(AppError):implemented_dividends(unknown,'20170703')
+
+    def test_shenhua_correction_metadata_cannot_be_forged(self):
+        original=implemented_dividends(DISCLOSURES['cash_dividend_overlaps'][0]['expected'],'20170703')[0]
+        for changes in ({'correction_fingerprint':'fake'},{'cash_div_tax':5.48},
+                        {'ordinary_cash_div_tax':'2.97'},{'special_cash_div_tax':'0'},
+                        {'correction_source':'https://example.com/claim'},
+                        {'correction_available_on':'20170318'},{'correction_originals':[]}):
+            with self.subTest(changes=changes),self.assertRaises(AppError):
+                implemented_dividends([{**original,**changes}],'20170703')
+
     def test_long_replay_keeps_old_cash_events_but_still_filters_future_announcements(self):
         row={'ts_code':'600001.SH','div_proc':'实施','end_date':'20141231','ann_date':'20150331',
              'imp_ann_date':'20150504','record_date':'20150508','ex_date':'20150511','pay_date':'20150511',

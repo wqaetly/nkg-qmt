@@ -55,9 +55,31 @@ def normalize_stock_only(rows, as_of):
     return result
 
 
+def normalize_cash_overlaps(rows, as_of):
+    for correction in DISCLOSURES['cash_dividend_overlaps']:
+        if correction['available_on']>as_of:
+            continue
+        total=correction['expected'][0]
+        event=[r for r in rows if all(r.get(k)==total[k] for k in ('ts_code','record_date','div_proc'))]
+        # Only the verified total and its exact component can be merged.
+        if (total not in event or len(event) not in (1,2) or any(r not in correction['expected'] for r in event)
+                or len({json.dumps(r,sort_keys=True) for r in event})!=len(event)):
+            continue
+        originals=sorted((dict(r) for r in event),key=lambda r:r['end_date'])
+        normalized={**total,'event_kind':'cash_overlap',
+                    'ordinary_cash_div_tax':correction['ordinary_cash_div_tax'],
+                    'special_cash_div_tax':correction['special_cash_div_tax'],
+                    'correction_source':correction['source'],'correction_source_pages':correction['pages'],
+                    'correction_available_on':correction['available_on'],'correction_note':correction['note'],
+                    'correction_originals':originals,
+                    'correction_fingerprint':hashlib.sha256(json.dumps(originals,sort_keys=True).encode()).hexdigest()}
+        rows=[r for r in rows if r not in event]+[normalized]
+    return rows
+
+
 def normalize_disclosed_dividends(rows, as_of):
-    """One verified provider overlap; unknown conflicts still fail closed."""
-    rows=normalize_stock_only(rows,as_of)
+    """Verified provider overlaps only; unknown conflicts still fail closed."""
+    rows=normalize_cash_overlaps(normalize_stock_only(rows,as_of),as_of)
     if as_of<'20230707':
         return rows
     event=[r for r in rows if r.get('ts_code')=='600600.SH' and r.get('record_date')=='20230713' and r.get('div_proc')=='实施']
@@ -90,6 +112,10 @@ def implemented_dividends(rows, as_of, earliest_period=None):
             continue
         for field in ("record_date", "ex_date", "end_date"):
             date_key(row.get(field))
+        if row.get('event_kind')=='cash_overlap':
+            originals=row.get('correction_originals',[])
+            if not originals or normalize_cash_overlaps(originals,as_of)!=[row]:
+                raise AppError('现金分红归并不匹配已核实原始记录。')
         stock_only=row.get('event_kind')=='stock_only'
         if stock_only:
             originals=row.get('correction_originals',[])

@@ -1,6 +1,7 @@
 import html
 import json
 import math
+from collections import Counter
 from pathlib import Path
 
 from .config import ROOT, now_cn
@@ -48,6 +49,32 @@ def percent(value):
         return '—'
 
 
+def experiment_history_panel(workspace):
+    versions={}
+    for path in sorted((workspace/'backtests').glob('*/summary.json')):
+        summary=optional_report(path)
+        protocol=optional_report(path.with_name('protocol.json')) or summary.get('protocol',{})
+        version=protocol.get('version',path.parent.name)
+        primary=next((run for run in summary.get('runs',[])
+                      if run.get('label') in ('5%股息门槛 · 全期','税前股息门槛 5%')), {})
+        state=summary.get('status') or primary.get('status') or 'pending'
+        metrics=summary.get('primary_metrics',primary.get('metrics',{}))
+        if state=='blocked' or primary.get('status')=='blocked':
+            state='blocked'
+            metrics={}
+        coverage=summary.get('coverage',{})
+        cash=summary.get('initial_cash',summary.get('account',{}).get('initial_cash',protocol.get('account_config',{}).get('paper_cash')))
+        period=f"¥ {number(cash)} · {coverage.get('start',protocol.get('selection_day','—'))}—{coverage.get('end',summary.get('as_of',protocol.get('replay_end','—')))}"
+        cohort=f"{version} · 建池 {protocol.get('selection_day','—')} · {coverage.get('stocks','—')} 只"
+        versions[version]=[cohort,period,EXPERIMENT_STATES.get(state,state),percent(metrics.get('cagr')),
+                           percent(metrics.get('average_exposure')),number(metrics.get('costs'))]
+    if not versions:
+        return ''
+    rows=table(['实验版本 / 建池日期 / 股票数','本金 / 回放区间','状态','年化收益','平均仓位','费用 / 元'],versions.values())
+    return f'''<details class="research-results" id="experiment-history"><summary>历次实验对照 · {len(versions)} 个版本</summary>
+    <p class="muted">仅列本工作区保存的各版本 5% 门槛主方案全期结果；保留旧实验，未混入其他本金工作区。输入阻塞时指标为 —，不是 0% 收益。建池日期、本金和区间不同的结果不能直接视作策略改进。</p>{rows}</details>'''
+
+
 def comparison_chart(backtest):
     series=backtest.get('comparison_series',[])
     if not series:
@@ -91,8 +118,8 @@ def period_diagnostics_panel(data):
     {summary if has_rolling else ''}{'<p class="muted">滚动三年统计汇总同一条历史资产曲线的不同窗口。重叠窗口不是独立样本，正收益占比不是未来盈利概率。</p>' if has_rolling else ''}</details>'''
 
 
-def research_panel(research, backtest, chart_symbols=()):
-    if not research and not backtest:
+def research_panel(research, backtest, chart_symbols=(), history=''):
+    if not research and not backtest and not history:
         return ''
     stocks=research.get('stocks',[])
     rows=[]
@@ -120,24 +147,32 @@ def research_panel(research, backtest, chart_symbols=()):
          percent(run.get('metrics',{}).get('average_exposure')),run.get('metrics',{}).get('trade_count'),number(run.get('metrics',{}).get('costs')),
          run.get('message',EXPERIMENT_STATES.get(run.get('status'),run.get('status','')))] for run in runs]) if runs else '<p class="muted">尚无可展示的历史回测结果。</p>'
     diagnostics=backtest.get('diagnostics',{})
+    selection=backtest.get('selection_audit',{})
     diagnoses=''
-    if diagnostics:
+    if diagnostics or selection:
         states='；'.join(f'{state} {count} 次' for state,count in diagnostics.get('states',{}).items())
-        reasons=table(['未通过 / 未成交原因','次数'],[[r.get('reason'),r.get('count')] for r in diagnostics.get('reasons',[])])
-        diagnoses=f'''<details class="research-results"><summary>未通过筛选与未成交原因</summary><p>共 {esc(diagnostics.get('evaluations'))} 次公司 / 时点评估。{esc(states)}</p>
-        <p class="muted">次数不等于股票数量。数据不足、未达到价格要求和资金不够买一手是不同原因；不能为了产生交易把它们视为通过。</p>{reasons}</details>'''
+        rejected=Counter(item.get('reason','未记录原因') for item in selection.get('rejected',[]))
+        reason_rows=[['建池淘汰（公司）',reason,count] for reason,count in rejected.most_common()]
+        reason_rows.extend([stage,r.get('reason'),r.get('count')] for key,stage in (('reasons','筛选未通过（公司 / 时点）'),('skips','执行跳过（事件）')) for r in diagnostics.get(key,[]))
+        reasons=table(['阶段','未通过 / 未成交原因','次数'],reason_rows)
+        selected=len(selection.get('stocks',[]))
+        selection_note=f"建池 {selected} 只 / 目标 {selection.get('target_count',backtest.get('protocol',{}).get('pool_size','—'))} 只；候选 {selection.get('candidate_count','—')} 家，已评估 {selection.get('evaluated_count',selected+len(selection.get('rejected',[])))} 家。" if selection else ''
+        diagnoses=f'''<details class="research-results" id="research-diagnostics"><summary>建池淘汰、筛选与未成交原因</summary><p>{esc(selection_note)}</p><p>共 {esc(diagnostics.get('evaluations'))} 次公司 / 时点评估。{esc(states)}</p>
+        <p class="muted">建池淘汰按公司计数，筛选按公司 / 时点计数，执行跳过按事件计数，三者不能相加。数据不足、未达到价格要求和资金不够买一手是不同原因；不能为了产生交易把它们视为通过。</p>{reasons}</details>'''
     limitations=research.get('limitations',[])+backtest.get('limitations',[])
     notes=''.join(f'<li>{esc(note)}</li>' for note in dict.fromkeys(limitations))
     backtest_state=backtest.get('status') or research.get('backtest',{}).get('status') or '待运行'
     backtest_state=EXPERIMENT_STATES.get(backtest_state,backtest_state)
+    historical_count=backtest.get('coverage',{}).get('stocks')
+    historical_note=f'历史建池 {historical_count} 只；与当日模拟账户分开记录' if historical_count is not None else '与当日模拟账户分开记录'
     message=backtest.get('message') or research.get('backtest',{}).get('message') or research.get('message','')
     return f'''<section class="panel research-lab" id="research-lab"><div class="section-title"><h2>策略研究台</h2><span class="pill">手动运行 · 不启用定时任务</span></div>
-    <div class="research-summary"><div><small>研究目标</small><strong>年化 ≥ 10%</strong><span>待验证，不是收益承诺</span></div><div><small>股票研究池</small><strong>{len(stocks)} / {esc(research.get('target_count',20))}</strong><span>研究对象，不等于持仓数量</span></div><div><small>历史检验状态</small><strong>{esc(backtest_state)}</strong><span>与当日模拟账户分开记录</span></div></div>
+    <div class="research-summary"><div><small>研究目标</small><strong>年化 ≥ 10%</strong><span>待验证，不是收益承诺</span></div><div><small>股票研究池</small><strong>{len(stocks)} / {esc(research.get('target_count',20))}</strong><span>研究对象，不等于持仓数量</span></div><div><small>历史检验状态</small><strong>{esc(backtest_state)}</strong><span>{esc(historical_note)}</span></div></div>
     <p class="muted">研究截至 {esc(research.get('as_of'))} · {esc(research.get('version'))}。{esc(research.get('method',''))}</p>
     <div class="filters"><label>搜索全部研究股票<input id="research-search" type="search" placeholder="公司、代码、行业或待核实问题"></label><span class="muted" id="research-count" aria-live="polite"></span></div>
     <p class="research-table-hint muted">表格可左右滑动，右侧查看研究依据与 K 线。</p><div class="table-scroll"><table id="research-table"><thead><tr><th>公司</th><th>估值</th><th>流动性</th><th>情景股息率</th><th>分红 / 综合状态</th><th>查看</th></tr></thead><tbody>{''.join(rows)}</tbody></table></div>
     <p id="research-empty" class="muted" hidden>没有匹配的研究对象。</p><div class="research-pagination"><button id="research-prev" type="button">上一页</button><span id="research-page" aria-live="polite"></span><button id="research-next" type="button">下一页</button></div>
-    {comparison_chart(backtest) if backtest else ''}{coverage_panel(backtest.get('coverage',{}))}{diagnoses}{period_diagnostics_panel(backtest.get('period_diagnostics',{})) if backtest.get('status')!='blocked' else ''}<details class="research-results"><summary>历史实验指标与验证边界</summary><p>{esc(message)}</p>{comparisons}<ul>{notes}</ul><p class="muted">平均仓位指每天投资市值占总资产比例的平均值；现金也计入收益分母。单个区间超过 10% 不代表目标已验证；还需独立区间、交易成本、退市与数据时点检查。历史结果不能保证未来收益。</p></details></section>'''
+    {comparison_chart(backtest) if backtest else ''}{history}{coverage_panel(backtest.get('coverage',{}))}{diagnoses}{period_diagnostics_panel(backtest.get('period_diagnostics',{})) if backtest.get('status')!='blocked' else ''}<details class="research-results"><summary>历史实验指标与验证边界</summary><p>{esc(message)}</p>{comparisons}<ul>{notes}</ul><p class="muted">平均仓位指每天投资市值占总资产比例的平均值；现金也计入收益分母。单个区间超过 10% 不代表目标已验证；还需独立区间、交易成本、退市与数据时点检查。历史结果不能保证未来收益。</p></details></section>'''
 
 
 def automatic_panel(data):
@@ -266,7 +301,7 @@ def render(workspace, ledger, report, status=None):
     <body><main><header><a class="brand" href="#">NKG<span> / DIVIDEND LAB</span></a><span class="local">● 本地研究 · 人工执行</span></header>
     <section class="hero"><div><p class="eyebrow">RESEARCH FIRST, EXECUTION SECOND</p><h1>先看分红能否持续，<br>再等价格满足假设。</h1><p>从沪深主板寻找低估值、持续高股息与强流动性，保留反对证据与资料缺口。<br>研究、模拟、手动成交，分开记录。</p></div><div class="date-card"><small>行情截至</small><strong>{esc(report.get('as_of','尚未运行'))}</strong><span>{esc(source)} · 市场快照 {esc(report.get('pool_date','—'))}</span><span>生成于 {esc(report.get('generated_at','—'))}</span></div></section>
     <div class="notice {'error' if not status.get('ok') or demo else ''}">{'虚构演示数据，不可用于真实交易。 ' if demo else ''}{esc(status.get('message',''))}</div>
-    {research_panel(research,backtest,chart_symbols)}
+    {research_panel(research,backtest,chart_symbols,experiment_history_panel(workspace) if not demo else '')}
     {chart_panel(workspace,report,report.get('demo_operations',{}) if demo else automatic,research)}
     {('<details class="panel account-fold"><summary>当日模拟账户与订单检查</summary>'+automatic_panel(automatic)+'</details>') if research and not demo else automatic_panel(automatic) if not demo else ''}
     <section class="metrics"><div><small>财报研究覆盖</small><strong>{report.get('covered',0)}<i> / {report.get('pool_size',0)}</i></strong><span>主板 {report.get('universe_count',0)} 家，财报批次不代表全市场</span></div><div><small>待核实 / 观察</small><strong>{sum(r['status'] in ('待核实','观察') for r in rows)}</strong><span>资料不齐时不生成价格结论</span></div><div><small>排除</small><strong>{sum(r['status']=='排除' for r in rows)}</strong><span>保留具体原因，避免只看成功案例</span></div><div><small>可进一步评估</small><strong>{sum(r['status']=='可进一步评估' for r in rows)}</strong><span>满足研究条件 ≠ 自动买入</span></div></section>

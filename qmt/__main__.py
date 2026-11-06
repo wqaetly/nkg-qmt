@@ -25,6 +25,7 @@ def parser():
     lab.add_argument('--enrich',action='store_true',help='使用已配置搜索和AI补充公开资料草稿')
     backtest=sub.add_parser('backtest',help='独立历史二十股研究池与含费用回放，不更改模拟账本')
     backtest.add_argument('--long-history',action='store_true',help='从2014年末独立建池，回放2015年至今；另取更早财报与估值预热')
+    backtest.add_argument('--quality-first',action='store_true',help='独立实验：财务门槛前置后选最多20只，保留旧股息率排序实验')
     research = sub.add_parser('research',help='搜索公开资料并由已配置的 AI 生成研究草稿')
     research.add_argument('symbol',type=symbol_key)
     review = sub.add_parser('review-template',help='生成待人工核查的三情景模板，不覆盖已有模板')
@@ -121,8 +122,9 @@ def run(args):
             status={'ok':True,'message':message,'at':now_cn().isoformat()}
             atomic_json(status_path,status)
         elif args.command=='backtest':
-            from .experiment import run_experiment, EXPERIMENT, LONG_EXPERIMENT
-            run_experiment(workspace,report['as_of'],cfg,experiment=LONG_EXPERIMENT if args.long_history else EXPERIMENT)
+            from .experiment import run_experiment, EXPERIMENT, LONG_EXPERIMENT, QUALITY_EXPERIMENT, QUALITY_LONG_EXPERIMENT
+            experiment=(QUALITY_LONG_EXPERIMENT if args.long_history else QUALITY_EXPERIMENT) if args.quality_first else (LONG_EXPERIMENT if args.long_history else EXPERIMENT)
+            run_experiment(workspace,report['as_of'],cfg,experiment=experiment)
         elif args.command=='lab':
             from .lab import run_lab
             run_lab(workspace,report,args.enrich)
