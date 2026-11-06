@@ -22,6 +22,23 @@ def registered(event):
 
 
 class StockReplayTests(unittest.TestCase):
+    def test_verified_yutong_packaging_fractional_ratio_is_not_rounded(self):
+        item=next(s for s in DISCLOSURES['stock_distributions'] if s['expected']['ts_code']=='002831.SZ')
+        event=item['expected'];code=event['ts_code']
+        self.assertEqual(Decimal(str(event['stk_div'])),Decimal('0.4019063'))
+        self.assertEqual(Decimal(str(event['cash_div_tax'])),Decimal('0.8038127'))
+        ledger=Ledger(':memory:',load_config())
+        try:
+            ledger.initialize('paper','100000','5000','20000','20260601')
+            ledger.opening('paper',code,100,'20260602')
+            ledger.mark('paper',event['record_date'],{code:{'trade_date':event['record_date'],'close':'38.54'}})
+            with self.assertRaisesRegex(AppError,'不足一股'):
+                ledger.dividends({code:[event]},event['ex_date'])
+            self.assertEqual(ledger.positions('paper'),{code:100})
+            self.assertEqual(ledger.summary('paper')['stock_events'],[])
+        finally:
+            ledger.close()
+
     def test_real_terms_require_exact_rows_and_publication_date(self):
         for item in DISCLOSURES['stock_distributions']:
             event=copy.deepcopy(item['expected'])

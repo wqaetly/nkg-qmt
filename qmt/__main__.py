@@ -22,7 +22,7 @@ def parser():
     daily.add_argument('--refresh',action='store_true',help='忽略当天缓存重新取数')
     sub.add_parser('report',help='根据已有数据重新生成本地报告')
     forecast = sub.add_parser('forecast-check',help='离线检验固定年末股息估计与后来派息代理，不运行交易或改变规则')
-    forecast.add_argument('--version',default='historical-dividend-v20-annual-all',help='已有完整年度候选实验目录名')
+    forecast.add_argument('--version',default='historical-dividend-v21-annual-all',help='已有完整年度候选实验目录名')
     lab=sub.add_parser('lab',help='冻结二十只研究名单并更新K线，不运行定时任务或新增订单')
     lab.add_argument('--enrich',action='store_true',help='使用已配置搜索和AI补充公开资料草稿')
     backtest=sub.add_parser('backtest',help='独立历史二十股研究池与含费用回放，不更改模拟账本')
@@ -31,6 +31,7 @@ def parser():
     backtest.add_argument('--annual-pool',action='store_true',help='财务门槛前置，每年末重新建池；同一账本连续回放，不重置现金')
     backtest.add_argument('--all-candidates',action='store_true',help='与 --annual-pool 同用：检查全部年末初筛候选，完整入场筛选后分配最多20只持仓')
     backtest.add_argument('--hold-band',action='store_true',help='与 --annual-pool 同用：月末对已有健康持仓使用3%保留门槛，新买仍按原条件')
+    backtest.add_argument('--yield-rank',action='store_true',help='与 --annual-pool --all-candidates 同用：财务估值流动性合格后按预计股息率排序，不使用预计5%入场门槛，不叠加 --hold-band')
     backtest.add_argument('--earnings-basis',choices=('conservative_minimum','ttm'),default='conservative_minimum',
                           help='独立盈利口径对照：ttm仅取滚动归母/扣非较低值；默认同时受历史利润约束，不修改日常规则')
     research = sub.add_parser('research',help='搜索公开资料并由已配置的 AI 生成研究草稿')
@@ -143,6 +144,12 @@ def run(args):
             if args.all_candidates:
                 if not args.annual_pool:raise AppError('--all-candidates 须与 --annual-pool 同用，持仓上限仍为20。')
                 experiment={**experiment,'version':experiment['version']+'-all','cohort_limit':None}
+            if args.yield_rank:
+                if not args.annual_pool or not args.all_candidates or args.hold_band:
+                    raise AppError('--yield-rank 须与 --annual-pool --all-candidates 同用，不能叠加 --hold-band。')
+                experiment={**experiment,'version':experiment['version']+'-rank','entry_mode':'yield_rank',
+                            'entry_yields':['0.05'],'primary_entry_yield':'0.05',
+                            'entry_rule':'保留历史股息率≥3%及原财务、估值、流动性条件；合格者按预计股息率降序、代码升序，将全部候选交给资金/行业/整手约束分配最多20只；限价为信号日收盘价×1.01向下取两位小数，不使用5%估值参考价拦截。'}
             if args.earnings_basis=='ttm':
                 experiment={**experiment,'version':experiment['version']+'-ttm','earnings_basis':'ttm'}
             run_experiment(workspace,report['as_of'],cfg,experiment=experiment)

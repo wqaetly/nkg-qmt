@@ -12,6 +12,7 @@ from .selection import automatic_path
 
 EXPERIMENT_STATES={'diagnostic':'仅诊断，待验证','running':'检验中','pending':'待运行','failed':'检验未完成','blocked':'输入待核实','complete':'历史实验完成'}
 EARNINGS_BASES={'conservative_minimum':'历史及 TTM 取低','ttm':'最近十二个月取低'}
+ENTRY_MODES={'yield_threshold':'固定股息门槛','yield_rank':'股息排序'}
 
 
 def esc(value):
@@ -55,14 +56,20 @@ def earnings_basis_label(protocol):
     return EARNINGS_BASES.get(protocol.get('earnings_basis','conservative_minimum'),'未识别口径')
 
 
+def entry_mode_label(protocol):
+    return ENTRY_MODES.get(protocol.get('entry_mode','yield_threshold'),'未识别入场方式')
+
+
 def experiment_history_panel(workspace):
     versions={}
     for path in sorted((workspace/'backtests').glob('*/summary.json')):
         summary=optional_report(path)
         protocol=optional_report(path.with_name('protocol.json')) or summary.get('protocol',{})
         version=protocol.get('version',path.parent.name)
+        primary_labels=(('股息排序 · 全期','股息排序') if protocol.get('entry_mode')=='yield_rank'
+                        else ('5%股息门槛 · 全期','税前股息门槛 5%') if protocol.get('entry_mode','yield_threshold')=='yield_threshold' else ())
         primary=next((run for run in summary.get('runs',[])
-                      if run.get('label') in ('5%股息门槛 · 全期','税前股息门槛 5%')), {})
+                      if run.get('label') in primary_labels), {})
         state=summary.get('status') or primary.get('status') or 'pending'
         metrics=summary.get('primary_metrics',primary.get('metrics',{}))
         if state=='blocked' or primary.get('status')=='blocked':
@@ -73,12 +80,12 @@ def experiment_history_panel(workspace):
         period=f"¥ {number(cash)} · {coverage.get('start',protocol.get('selection_day','—'))}—{coverage.get('end',summary.get('as_of',protocol.get('replay_end','—')))}"
         cohort=f"{version} · 首次建池 {protocol.get('selection_day','—')} · 累计 {coverage.get('stocks','—')} 只"
         versions[version]=[cohort,period,EXPERIMENT_STATES.get(state,state),percent(metrics.get('cagr')),
-                           percent(metrics.get('average_exposure')),number(metrics.get('costs')),earnings_basis_label(protocol)]
+                           percent(metrics.get('average_exposure')),number(metrics.get('costs')),earnings_basis_label(protocol),entry_mode_label(protocol)]
     if not versions:
         return ''
-    rows=table(['实验版本 / 首次建池 / 累计股票数','本金 / 回放区间','状态','年化收益','平均仓位','费用 / 元','盈利口径'],versions.values())
+    rows=table(['实验版本 / 首次建池 / 累计股票数','本金 / 回放区间','状态','年化收益','平均仓位','费用 / 元','盈利口径','入场方式'],versions.values())
     return f'''<details class="research-results" id="experiment-history"><summary>历次实验对照 · {len(versions)} 个版本</summary>
-    <p class="muted">仅列本工作区保存的各版本 5% 门槛主方案全期结果；保留旧实验，未混入其他本金工作区。输入阻塞时指标为 —，不是 0% 收益。未声明盈利口径的旧归档按“历史及 TTM 取低”解释；口径变化不是收益验证。建池日期、本金和区间不同的结果不能直接视作策略改进。</p>{rows}</details>'''
+    <p class="muted">仅列本工作区保存的各版本预设主方案全期结果；固定门槛旧实验取 5% 主方案，股息排序实验只有一个排序方案。保留旧实验，未混入其他本金工作区。输入阻塞时指标为 —，不是 0% 收益。未声明盈利口径的旧归档按“历史及 TTM 取低”解释；口径变化不是收益验证。建池日期、本金、入场方式和区间不同的结果不能直接视作策略改进。</p>{rows}</details>'''
 
 
 def comparison_chart(backtest):
@@ -281,17 +288,19 @@ def research_panel(research, backtest, chart_symbols=(), history=''):
     diagnostics=backtest.get('diagnostics',{})
     selection=backtest.get('selection_audit',{})
     protocol=backtest.get('protocol',{})
+    ranked=protocol.get('entry_mode')=='yield_rank'
     diagnoses=''
     if diagnostics or selection:
         states='；'.join(f'{state} {count} 次' for state,count in diagnostics.get('states',{}).items())
         entry=diagnostics.get('entry_funnel',[])
         funnel=''
         if entry:
-            funnel='<div id="entry-funnel">'+table(['当期候选顺序筛选','公司·月次数'],[[item.get('stage'),item.get('count')] for item in entry])
+            funnel='<div id="entry-funnel">'+table(['当期候选顺序筛选','公司·月次数'],[
+                ['排序候选' if ranked and item.get('stage')=='全部买入条件通过' else item.get('stage'),item.get('count')] for item in entry])
             funnel+='<p class="muted">仅统计当期候选，排除退池后继续跟踪的公司。各层是按顺序取交集，不表示单项条件的独立因果作用；合格候选次数不是订单或成交笔数。</p></div>'
         months=diagnostics.get('candidate_months',{})
         if months:
-            funnel+=f'<p id="candidate-months" class="muted">月度评估 {esc(months.get("months"))} 次，其中 {esc(months.get("empty"))} 次无买入候选；合格候选累计 {esc(months.get("total_candidates"))} 个公司·月。</p>'
+            funnel+=f'<p id="candidate-months" class="muted">月度评估 {esc(months.get("months"))} 次，其中 {esc(months.get("empty"))} 次无{"排序" if ranked else "买入"}候选；合格候选累计 {esc(months.get("total_candidates"))} 个公司·月。</p>'
         unused=diagnostics.get('unused_share_conflicts',[])
         conflicts=''
         if unused:
@@ -334,15 +343,17 @@ def research_panel(research, backtest, chart_symbols=(), history=''):
     earnings_formula={'conservative_minimum':'取近三年较低利润中位数、最近年度较低利润、归母 TTM、扣非 TTM 四者最低值。',
                       'ttm':'只取归母 TTM 与扣非 TTM 较低值，不再与历史年度利润取更低值。'}.get(protocol.get('earnings_basis','conservative_minimum'),'协议中的盈利口径无法识别。')
     earnings_note=f'<p id="earnings-basis">历史实验盈利口径：{esc(earnings_label)}。{esc(earnings_formula)}这是机械口径对照，不等同于正常化盈利，也不代表收益已验证。</p>' if backtest else ''
+    entry_card=f'<span>入场方式：{esc(entry_mode_label(protocol))}</span>' if backtest else ''
+    entry_note=('<p class="muted" id="entry-mode">历史实验按股息排序：每月末对通过财务、估值、流动性及历史 TTM 股息率至少 3% 初筛的候选，按预计股息率降序分配。最多持仓 20 只，继续受资金和行业上限约束。5% 只作情景计算参考，不作为入场条件或买入限价上限；日常模拟规则未随此实验改变。</p>' if ranked else '')
     target_note=f'<p>回放调仓规则：{esc(protocol["monthly_targets"])}</p>' if protocol.get('monthly_targets') else ''
     message=backtest.get('message') or research.get('backtest',{}).get('message') or research.get('message','')
     return f'''<section class="panel research-lab" id="research-lab"><div class="section-title"><h2>策略研究台</h2><span class="pill">手动运行 · 不启用定时任务</span></div>
-    <div class="research-summary"><div><small>研究目标</small><strong>年化 ≥ 10%</strong><span>待验证，不是收益承诺</span></div><div><small>股票研究池</small><strong>{len(stocks)} / {esc(research.get('target_count',20))}</strong><span>研究对象，不等于持仓数量</span></div><div><small>历史检验状态</small><strong>{esc(backtest_state)}</strong><span>{esc(historical_note)}</span>{holding_note}{earnings_card}</div></div>
+    <div class="research-summary"><div><small>研究目标</small><strong>年化 ≥ 10%</strong><span>待验证，不是收益承诺</span></div><div><small>股票研究池</small><strong>{len(stocks)} / {esc(research.get('target_count',20))}</strong><span>研究对象，不等于持仓数量</span></div><div><small>历史检验状态</small><strong>{esc(backtest_state)}</strong><span>{esc(historical_note)}</span>{holding_note}{earnings_card}{entry_card}</div></div>
     <p class="muted">研究截至 {esc(research.get('as_of'))} · {esc(research.get('version'))}。{esc(research.get('method',''))}</p>
     <div class="filters"><label>搜索全部研究股票<input id="research-search" type="search" placeholder="公司、代码、行业或待核实问题"></label><span class="muted" id="research-count" aria-live="polite"></span></div>
     <p class="research-table-hint muted">表格可左右滑动，右侧查看研究依据与 K 线。</p><div class="table-scroll"><table id="research-table"><thead><tr><th>公司</th><th>估值</th><th>流动性</th><th>情景股息率</th><th>分红 / 综合状态</th><th>查看</th></tr></thead><tbody>{''.join(rows)}</tbody></table></div>
     <p id="research-empty" class="muted" hidden>没有匹配的研究对象。</p><div class="research-pagination"><button id="research-prev" type="button">上一页</button><span id="research-page" aria-live="polite"></span><button id="research-next" type="button">下一页</button></div>
-    {comparison_chart(backtest) if backtest else ''}{history}{coverage_panel(backtest.get('coverage',{}))}{diagnoses}{period_diagnostics_panel(backtest.get('period_diagnostics',{})) if backtest.get('status')!='blocked' else ''}<details class="research-results"><summary>历史实验指标与验证边界</summary><p>{esc(message)}</p>{earnings_note}{target_note}{comparisons}<ul>{notes}</ul><p class="muted">平均仓位指每天投资市值占总资产比例的平均值；现金也计入收益分母。单个区间超过 10% 不代表目标已验证；还需独立区间、交易成本、退市与数据时点检查。历史结果不能保证未来收益。</p></details></section>'''
+    {entry_note}{comparison_chart(backtest) if backtest else ''}{history}{coverage_panel(backtest.get('coverage',{}))}{diagnoses}{period_diagnostics_panel(backtest.get('period_diagnostics',{})) if backtest.get('status')!='blocked' else ''}<details class="research-results"><summary>历史实验指标与验证边界</summary><p>{esc(message)}</p>{earnings_note}{target_note}{comparisons}<ul>{notes}</ul><p class="muted">平均仓位指每天投资市值占总资产比例的平均值；现金也计入收益分母。单个区间超过 10% 不代表目标已验证；还需独立区间、交易成本、退市与数据时点检查。历史结果不能保证未来收益。</p></details></section>'''
 
 
 def automatic_panel(data):
@@ -387,6 +398,9 @@ def historical_chart_data(workspace):
     summary=record('summary.json')
     if summary.get('protocol',{}).get('version')!=version or summary.get('status') not in ('diagnostic','complete'):
         return {}
+    mode=summary.get('protocol',{}).get('entry_mode','yield_threshold')
+    if mode not in ENTRY_MODES or latest['protocol'].get('entry_mode','yield_threshold')!=mode:
+        return {}
     coverage=summary.get('coverage',{})
     if not all(isinstance(coverage.get(key),str) and re.fullmatch(r'\d{8}',coverage[key]) for key in ('start','end')) or coverage['start']>coverage['end']:
         return {}
@@ -407,15 +421,16 @@ def historical_chart_data(workspace):
     names={s['symbol']:s.get('name',s['symbol']) for s in record('cohort.json').get('stocks',[])}
     names.update({s['symbol']:s.get('name',s['symbol']) for s in summary.get('selection_audit',{}).get('stocks',[])})
     runs=[]
-    for rate in ('004','005','006'):
-        label=f'{int(rate)}%股息门槛 · 全期'
+    chart_runs=([('rank','股息排序 · 全期','本次历史 股息排序 · 主方案')] if mode=='yield_rank' else
+                [(rate,f'{int(rate)}%股息门槛 · 全期',f'本次历史 {int(rate)}%'+(' · 主方案' if rate=='005' else '')) for rate in ('004','005','006')])
+    for rate,label,display in chart_runs:
         if not any(run.get('label')==label and run.get('status') in ('diagnostic','complete') for run in summary.get('runs',[])):
             continue
         result=record(f'yield-{rate}-result.json')
         if (result.get('start')!=coverage.get('start') or result.get('end')!=coverage.get('end')
                 or not isinstance(result.get('plans'),list) or not isinstance(result.get('trades'),list)):
             continue
-        runs.append({'id':rate,'label':f'本次历史 {int(rate)}%'+(' · 主方案' if rate=='005' else ''),
+        runs.append({'id':rate,'label':display,
                      'plans':result['plans'],'fills':result['trades'],'stock_events':chart_stock_events(result.get('stock_events'))})
     return {'version':version,'start':coverage.get('start'),'end':coverage.get('end'),'stocks':stocks,'names':names,'runs':runs,
             'dividend_notes':chart_dividend_notes(market.get('dividends',{}),coverage['end'])} if runs else {}

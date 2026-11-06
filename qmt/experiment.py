@@ -3,7 +3,7 @@ import json
 import hashlib
 from pathlib import Path
 from datetime import datetime, timedelta
-from decimal import Decimal
+from decimal import Decimal, ROUND_FLOOR
 from statistics import median
 from collections import Counter
 
@@ -16,24 +16,24 @@ from .service import read_json
 from .industry import industry_at, load_industry_history
 
 
-EXPERIMENT = {'version':'historical-dividend-v20','selection_day':'20221230','development_end':'20241231',
+EXPERIMENT = {'version':'historical-dividend-v21','selection_day':'20221230','development_end':'20241231',
               'validation_start':'20250101','pool_size':20,'entry_yields':['0.04','0.05','0.06'],
               'primary_entry_yield':'0.05','target_cagr':'0.10','benchmark':'515180.SH','earnings_basis':'conservative_minimum'}
-LONG_EXPERIMENT = {**EXPERIMENT,'version':'historical-dividend-v20-long','selection_day':'20141231',
+LONG_EXPERIMENT = {**EXPERIMENT,'version':'historical-dividend-v21-long','selection_day':'20141231',
                    'development_end':'20191231','validation_start':'20200101','benchmark':'510880.SH'}
-QUALITY_EXPERIMENT = {**EXPERIMENT,'version':'historical-dividend-v20-quality','quality_first':True}
-QUALITY_LONG_EXPERIMENT = {**LONG_EXPERIMENT,'version':'historical-dividend-v20-quality-long','quality_first':True}
-ANNUAL_EXPERIMENT = {**QUALITY_EXPERIMENT,'version':'historical-dividend-v20-annual','pool_refresh':'year_end',
+QUALITY_EXPERIMENT = {**EXPERIMENT,'version':'historical-dividend-v21-quality','quality_first':True}
+QUALITY_LONG_EXPERIMENT = {**LONG_EXPERIMENT,'version':'historical-dividend-v21-quality-long','quality_first':True}
+ANNUAL_EXPERIMENT = {**QUALITY_EXPERIMENT,'version':'historical-dividend-v21-annual','pool_refresh':'year_end',
     'pool_exit':'退出名单的资料待核实持仓继续冻结跟踪；其他退出名单股票按下一交易日限价退出。行业沿用首次归属，变更冻结。',
     'monthly_targets':'沿用原回放月末重配：除冻结持仓外，仅当月仍满足全部买入条件者保留目标；不宣称只在3%股息率以下退出。'}
-ANNUAL_LONG_EXPERIMENT = {**ANNUAL_EXPERIMENT,'version':'historical-dividend-v20-annual-long',
+ANNUAL_LONG_EXPERIMENT = {**ANNUAL_EXPERIMENT,'version':'historical-dividend-v21-annual-long',
     'selection_day':LONG_EXPERIMENT['selection_day'],'development_end':LONG_EXPERIMENT['development_end'],
     'validation_start':LONG_EXPERIMENT['validation_start'],'benchmark':LONG_EXPERIMENT['benchmark']}
 
 
-HOLD_EXPERIMENT = {**ANNUAL_EXPERIMENT,'version':'historical-dividend-v20-annual-hold','retention_yield':'0.03',
+HOLD_EXPERIMENT = {**ANNUAL_EXPERIMENT,'version':'historical-dividend-v21-annual-hold','retention_yield':'0.03',
     'monthly_targets':'月末检查：当期成员财务已核实、流动性通过且当日情景股息率至少3%可保留；估值及历史股息入场条件不单独触发卖出。仅持有资格不允许加仓；仍满足完整入场条件者沿用原重配。保留股先占额度，按原月度单股预算与行业额度整手修剪，资料待核实仍冻结；不是每日风险退出。'}
-HOLD_LONG_EXPERIMENT = {**ANNUAL_LONG_EXPERIMENT,'version':'historical-dividend-v20-annual-long-hold',
+HOLD_LONG_EXPERIMENT = {**ANNUAL_LONG_EXPERIMENT,'version':'historical-dividend-v21-annual-long-hold',
                        'retention_yield':HOLD_EXPERIMENT['retention_yield'],'monthly_targets':HOLD_EXPERIMENT['monthly_targets']}
 
 
@@ -84,9 +84,24 @@ def protocol(cfg, experiment=EXPERIMENT, end=None):
     return {**experiment,'replay_end':end,'rules':load_rules(),'account_config':cfg,'engine_sha256':code_hash.hexdigest()}
 
 
-def register_experiment(workspace, end, cfg, experiment):
+def validate_experiment(experiment):
     if experiment.get('earnings_basis','conservative_minimum') not in ('conservative_minimum','ttm'):
         raise AppError('未知实验盈利口径，未登记或回退为默认规则。')
+    mode=experiment.get('entry_mode','yield_threshold')
+    if mode not in ('yield_threshold','yield_rank'):
+        raise AppError('未知实验入场方式，未登记或回退为股息门槛。')
+    if mode=='yield_rank' and (experiment.get('pool_refresh')!='year_end' or not experiment.get('quality_first')
+            or experiment.get('cohort_limit',experiment['pool_size']) is not None
+            or experiment.get('retention_yield') is not None
+            or experiment['entry_yields']!=['0.05'] or experiment['primary_entry_yield']!='0.05'):
+        raise AppError('股息排序实验须使用完整年度财务候选且不叠加持有缓冲；只计算单个5%参考情景，不作为入场门槛。')
+    if experiment.get('retention_yield') is not None and (experiment.get('pool_refresh')!='year_end'
+            or not 0<dec(experiment['retention_yield'])<min(dec(rate) for rate in experiment['entry_yields'])):
+        raise AppError('持有缓冲实验须使用年度池，且持有门槛为正并低于全部入场门槛。')
+
+
+def register_experiment(workspace, end, cfg, experiment):
+    validate_experiment(experiment)
     path=workspace/'backtests'/experiment['version']
     path.mkdir(parents=True,exist_ok=True)
     manifest=path/'protocol.json'
@@ -266,6 +281,7 @@ def prepare_annual_experiment(workspace, end, progress=print, cfg=None, experime
 
 
 def experiment_signals(client, cohort, data, dossiers, names, history, amounts, entry_yield, industries, peers, progress=print, experiment=EXPERIMENT):
+    validate_experiment(experiment)
     if not cohort['stocks']:return {},[]
     sessions=data['sessions']; end=sessions[-1]
     _,valuation_start,liquidity_start=history_bounds(experiment)
@@ -316,6 +332,11 @@ def experiment_signals(client, cohort, data, dossiers, names, history, amounts, 
                 a.update(state='待数据核实',reason='入池后行业变更或区间未知；保留持仓并停止新增，须重核行业风险')
             if not active and a['state']!='待数据核实':
                 a.update(state='退出研究池',reason='年度研究池已退出，按下一交易日限价退出；未复用下一期名单到此前日期')
+            rank=experiment.get('entry_mode')=='yield_rank' and a['state'] in ('满足价格条件','等待价格')
+            if rank:
+                # The 5% valuation reference is not an execution cap in the ranking experiment.
+                a.update(state='排序候选',reason='财务、估值和流动性通过，按预计股息率排序；预计5%股息率不作为入场门槛')
+                order_limit=str((dec(q['close'],positive=True)*Decimal('1.01')).quantize(Decimal('.01'),rounding=ROUND_FLOOR))
             holding_eligible=(experiment.get('retention_yield') is not None and active and a['state']!='待数据核实'
                 and a['dimensions']['dividend']['state'] in ('满足价格条件','等待价格')
                 and valuation['state']!='待核实' and a['dimensions']['liquidity']['state']=='通过' and a.get('estimated_yield') is not None
@@ -324,20 +345,21 @@ def experiment_signals(client, cohort, data, dossiers, names, history, amounts, 
             assessed.append({'symbol':code,'state':a['state'],'reason':a['reason'],'evidence_hash':a.get('evidence_hash'),
                              'active':active,'dimensions':a['dimensions'],'coarse_pass':row['selection']['coarse_pass'],
                              'estimated_yield':a.get('estimated_yield'),
+                             **({'valuation_reference_price':a['reference_price'],'order_limit':order_limit} if rank else {}),
                              **({'data_warnings':row['data_warnings']} if row.get('data_warnings') else {}),
                              **({'holding_eligible':holding_eligible} if experiment.get('retention_yield') is not None else {})})
             if a['state']=='待数据核实':freeze.append(code)
-            if a['state']=='满足价格条件':candidates.append({'symbol':code,'reference_price':a['reference_price'],'known_on':day,
+            if a['state'] in ('满足价格条件','排序候选'):candidates.append({'symbol':code,'reference_price':order_limit if rank else a['reference_price'],'known_on':day,
                                                           'reason':a['reason'],'estimated_yield':a['estimated_yield']})
         candidates.sort(key=lambda a:(-dec(a['estimated_yield']),a['symbol']))
         signals[day]={'candidates':candidates,'freeze':freeze}
         if experiment.get('retention_yield') is not None:signals[day]['retain']=retain
         audits.append({'day':day,'assessments':assessed})
-        if index%10==0 or index==len(days):progress(f'{entry_yield} 规则历史评估 {index}/{len(days)} 月',flush=True)
+        if index%10==0 or index==len(days):progress(f'{"股息排序" if experiment.get("entry_mode")=="yield_rank" else entry_yield} 规则历史评估 {index}/{len(days)} 月',flush=True)
     return signals,audits
 
 
-def entry_diagnostics(audits, signals):
+def entry_diagnostics(audits, signals, entry_mode='yield_threshold'):
     active=[a for month in audits for a in month['assessments'] if a.get('active',True)]
     funnel=[{'stage':'当期候选','count':len(active)}]
     for stage,passed in (
@@ -345,7 +367,7 @@ def entry_diagnostics(audits, signals):
         ('估值通过',lambda a:a.get('dimensions',{}).get('valuation',{}).get('state')=='通过'),
         ('流动性通过',lambda a:a.get('dimensions',{}).get('liquidity',{}).get('state')=='通过'),
         ('基础候选通过',lambda a:a.get('coarse_pass',False)),
-        ('全部买入条件通过',lambda a:a['state']=='满足价格条件')):
+        ('排序候选' if entry_mode=='yield_rank' else '全部买入条件通过',lambda a:a['state'] in ('满足价格条件','排序候选'))):
         active=[a for a in active if passed(a)]
         funnel.append({'stage':stage,'count':len(active)})
     counts=[len(snapshot['candidates']) for snapshot in signals.values()]
@@ -367,27 +389,28 @@ def entry_diagnostics(audits, signals):
 def run_experiment(workspace, end, cfg, progress=print, experiment=EXPERIMENT):
     from .backtest import simulate, metrics, period_diagnostics
     from .comparison import build_comparisons
-    if experiment.get('retention_yield') is not None and (experiment.get('pool_refresh')!='year_end'
-            or not 0<dec(experiment['retention_yield'])<min(dec(rate) for rate in experiment['entry_yields'])):
-        raise AppError('持有缓冲实验须使用年度池，且持有门槛为正并低于全部入场门槛。')
+    validate_experiment(experiment)
+    rank=experiment.get('entry_mode')=='yield_rank'
+    primary_label='股息排序主方案（含估计成本）' if rank else '5%门槛主方案（含估计成本）'
     prepare=prepare_annual_experiment if experiment.get('pool_refresh')=='year_end' else prepare_experiment
     path,client,cohort,data,dossiers,names,history,amounts,industries,peers=prepare(workspace,end,progress,cfg,experiment)
     runs=[]; comparison_series=[]; diagnostics={}; periods={}; primary_metrics={}
     for rate in experiment['entry_yields']:
         signals,audits=experiment_signals(client,cohort,data,dossiers,names,history,amounts,rate,industries,peers,progress,experiment)
-        name='yield-'+rate.replace('.','')
+        name='yield-rank' if rank else 'yield-'+rate.replace('.','')
+        label='股息排序' if rank else f'{float(rate):.0%}股息门槛'
         atomic_json(path/(name+'-signals.json'),{'signals':signals,'audit':audits})
         if rate==experiment['primary_entry_yield']:
             assessments=[a for m in audits for a in m['assessments']]
             diagnostics={'evaluations':len(assessments),'states':dict(Counter(a['state'] for a in assessments)),
-                         'reasons':[{'reason':reason,'count':count} for reason,count in Counter(a['reason'] for a in assessments if a['state']!='满足价格条件').most_common()],
-                         'skips':[],**entry_diagnostics(audits,signals)}
+                         'reasons':[{'reason':reason,'count':count} for reason,count in Counter(a['reason'] for a in assessments if a['state'] not in ('满足价格条件','排序候选')).most_common()],
+                         'skips':[],**entry_diagnostics(audits,signals,experiment.get('entry_mode','yield_threshold'))}
         try:
             result=simulate(data,signals,cfg,initial_cash=cfg['paper_cash'],max_holdings=load_rules()['max_holdings'])
             if rate==experiment['primary_entry_yield']:
                 primary_metrics=result['metrics']
-                periods={'label':'5%门槛主方案（含估计成本）',**period_diagnostics(result['equity_curve'],result['trades'])}
-                comparison_series.append({'label':'5%门槛主方案（含估计成本）','kind':'strategy','points':[
+                periods={'label':primary_label,**period_diagnostics(result['equity_curve'],result['trades'])}
+                comparison_series.append({'label':primary_label,'kind':'strategy','points':[
                     {'day':p['day'],'value':float(dec(p['equity'])/dec(result['initial_cash']))} for p in result['equity_curve']]})
                 diagnostics['skips']=[{'reason':reason,'count':count} for reason,count in Counter(s['reason'] for s in result['skipped']).most_common()]
             curve=result['equity_curve']
@@ -396,12 +419,12 @@ def run_experiment(workspace, end, cfg, progress=print, experiment=EXPERIMENT):
             result['development_metrics']=metrics(development,[t for t in result['trades'] if t['trade_date']<=experiment['development_end']],result['initial_cash'])
             result['validation_metrics']=metrics(validation,[t for t in result['trades'] if t['trade_date']>=experiment['validation_start']],validation[0]['equity'])
             atomic_json(path/(name+'-result.json'),result)
-            for key,label in (('metrics','全期'),('development_metrics',f"截至{experiment['development_end'][:4]}开发段"),('validation_metrics',f"{experiment['validation_start'][:4]}起留出段")):
-                runs.append({'label':f'{float(rate):.0%}股息门槛 · {label}','metrics':result[key],
+            for key,period_label in (('metrics','全期'),('development_metrics',f"截至{experiment['development_end'][:4]}开发段"),('validation_metrics',f"{experiment['validation_start'][:4]}起留出段")):
+                runs.append({'label':f'{label} · {period_label}','metrics':result[key],
                              'status':'diagnostic','artifact':str(path/(name+'-result.json'))})
         except AppError as exc:
-            runs.append({'label':f'税前股息门槛 {float(rate):.0%}','status':'blocked','message':str(exc),'metrics':{}})
-        progress(f'历史回放 {rate}：{runs[-1]["status"]}',flush=True)
+            runs.append({'label':'股息排序' if rank else f'税前股息门槛 {float(rate):.0%}','status':'blocked','message':str(exc),'metrics':{}})
+        progress(f'历史回放 {label}：{runs[-1]["status"]}',flush=True)
     comparisons=build_comparisons(client,data['sessions'],cfg['paper_cash'],symbol=experiment['benchmark'])
     for item in comparisons:
         runs.append({'label':item['label'],'status':item['status'],'metrics':item['metrics'],'message':'；'.join(filter(None,[item.get('message'),*item['limitations']]))})
@@ -422,7 +445,7 @@ def run_experiment(workspace, end, cfg, progress=print, experiment=EXPERIMENT):
         'limitations':['当前仅为历史诊断，不能据此宣布年化10%达成。',
                        scope+'原始历史财报版本未逐份公告存档核验，仍存在修订数据和缺口选样风险。',
                        '行业使用申万一级历史纳入/剔除区间，缺失/冲突不取当前标签；入池后行业变更会冻结交易，供应商历史分类修订仍需原始存档验证。',
-                       f"本次运行前登记开发段截至{experiment['development_end']}、留出段自{experiment['validation_start']}；全部4%/5%/6%结果公开。此前已查看过部分历史结果，此留出段不是真正未见数据；年度和滚动统计切分同一账户曲线，没有逐窗训练参数，不是真正独立盲测。",
+                       f"本次运行前登记开发段截至{experiment['development_end']}、留出段自{experiment['validation_start']}；"+('仅运行一个股息排序方案，5%只作估计参考，不是入场门槛。' if rank else '全部4%/5%/6%结果公开。')+'此前已查看过部分历史结果，此留出段不是真正未见数据；年度和滚动统计切分同一账户曲线，没有逐窗训练参数，不是真正独立盲测。',
                        experiment.get('monthly_targets','月末重新分配目标；除资料待核实的冻结持仓外，不再满足买入条件会退出。这不是仅在预测股息率低于3%才卖出的持有策略。'),
                        '当前为税前现金及股份分派与保守费用；仅入账公告已核实且新增股数为整数的送转，未核实/零碎股或持仓估值缺失会阻断，不删除异常股票来美化收益。']}
     atomic_json(path/'summary.json',output)

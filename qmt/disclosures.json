@@ -281,6 +281,126 @@
       "source_sha256": "225cd830ec94199bfa7937be63a0edc609e9330bbdff093b6037501a8e0f5360",
       "pages": "1—2",
       "note": "A股每股现金1元、发行溢价形成公积金转增0.4；新增股份除权日上市；不能用B股登记日替代。"
+    },
+    {
+      "expected": {
+        "ts_code": "002831.SZ",
+        "end_date": "20251231",
+        "ann_date": "20260520",
+        "div_proc": "实施",
+        "cash_div_tax": 0.8038127,
+        "stk_div": 0.4019063,
+        "record_date": "20260603",
+        "ex_date": "20260604",
+        "pay_date": "20260604",
+        "imp_ann_date": "20260529"
+      },
+      "available_on": "20260529",
+      "stock_list_date": "20260604",
+      "source": "https://static.cninfo.com.cn/finalpage/2026-05-29/1225335706.PDF",
+      "source_sha256": "ae29cedfb8dd555a2c0f624a05fe0d91484b67d29fc5ba1118dfca79a52f5922",
+      "pages": "1,3,4,5",
+      "note": "实际每股现金0.8038127及资本公积转增0.4019063与接口一致；不能替换为预案0.8/0.4，也不能误用摊薄参考0.7991573/0.3995786。单账户非整数权益不能由持股数唯一确定，未做四舍五入或自行补股。"
+    },
+    {
+      "expected": {
+        "ts_code": "000999.SZ",
+        "end_date": "20241231",
+        "ann_date": "20250418",
+        "div_proc": "实施",
+        "cash_div_tax": 0.32,
+        "stk_div": 0.3,
+        "record_date": "20250605",
+        "ex_date": "20250606",
+        "pay_date": "20250606",
+        "imp_ann_date": "20250529"
+      },
+      "available_on": "20250529",
+      "stock_list_date": "20250606",
+      "source": "https://static.cninfo.com.cn/finalpage/2025-05-29/1223714243.PDF",
+      "source_sha256": "082e91a75d1e14c9d8c58d38a8eb4c3dde3323f0ad1699d6b6c0cc76106a0c7a",
+      "pages": "1-4",
+      "note": "每股现金0.32、资本公积转增0.3；回购账户0股，公告未另列摊薄除权参考比例。公告落款20250528，但巨潮披露日及接口实施公告日均20250529，available_on采用后者。非整数账户权益仍不能自行四舍五入。"
+    },
+    {
+      "expected": {
+        "ts_code": "603195.SH",
+        "end_date": "20241231",
+        "ann_date": "20250516",
+        "div_proc": "实施",
+        "cash_div_tax": 2.4,
+        "stk_div": 0.4,
+        "record_date": "20250606",
+        "ex_date": "20250609",
+        "pay_date": "20250609",
+        "imp_ann_date": "20250531"
+      },
+      "available_on": "20250531",
+      "stock_list_date": "20250609",
+      "source": "https://static.cninfo.com.cn/finalpage/2025-05-31/1223733345.PDF",
+      "source_sha256": "ed8295a1ebec8b8b406eec31bc6153213cd3c0c88fc4ad30a81f88d2a5e460db",
+      "pages": "1-4",
+      "note": "实际每股现金2.40、股本溢价形成资本公积转增0.40；排除回购73股。p2摊薄参考数均约等于实际值，但概念独立。新增无限售股份上市日明确20250609；未把未单列的到账日猜作同日。"
+    },
+    {
+      "expected": {
+        "ts_code": "600348.SH",
+        "end_date": "20221231",
+        "ann_date": "20230527",
+        "div_proc": "实施",
+        "cash_div_tax": 0.877,
+        "stk_div": 0.5,
+        "record_date": "20230615",
+        "ex_date": "20230616",
+        "pay_date": "20230616",
+        "imp_ann_date": "20230609"
+      },
+      "available_on": "20230609",
+      "stock_list_date": "20230616",
+      "source": "https://static.cninfo.com.cn/finalpage/2023-06-09/1217022600.PDF",
+      "source_sha256": "a2549cb989e92d7b0dfbafa62ffbee025ee494024a73a5ebed4358db223d0597",
+      "pages": "1-2,4",
+      "note": "每股现金0.877元、利润送红股0.5股；新增无限售流通股20230616上市。不得将送红股误记为资本公积转增；账户级非整数分配未核实。"
+    },
+    {
+      "expected": {
+        "ts_code": "600211.SH",
+        "end_date": "20231231",
+        "ann_date": "20240417",
+        "div_proc": "实施",
+        "cash_div_tax": 0.737,
+        "stk_div": 0.3,
+        "record_date": "20240429",
+        "ex_date": "20240430",
+        "pay_date": "20240430",
+        "imp_ann_date": "20240424"
+      },
+      "available_on": "20240424",
+      "stock_list_date": "20240430",
+      "source": "https://static.cninfo.com.cn/finalpage/2024-04-24/1219764187.PDF",
+      "source_sha256": "36bd7c9bed05b470f666a624b9eddfdefb33ac04b956ea1f76d63af9a57b40dc",
+      "pages": "1-2,4",
+      "note": "每股现金0.737元、资本公积金转增0.3股；新增无限售流通股20240430上市；账户级非整数分配未核实。"
+    },
+    {
+      "expected": {
+        "ts_code": "603018.SH",
+        "end_date": "20251231",
+        "ann_date": "20260530",
+        "div_proc": "实施",
+        "cash_div_tax": 0.125,
+        "stk_div": 0.2,
+        "record_date": "20260626",
+        "ex_date": "20260629",
+        "pay_date": "20260629",
+        "imp_ann_date": "20260623"
+      },
+      "available_on": "20260623",
+      "stock_list_date": "20260629",
+      "source": "https://static.cninfo.com.cn/finalpage/2026-06-23/1225382041.PDF",
+      "source_sha256": "da727c83c34c1fe2ebd576e83624dc1423fa159bcd31301cd1f3006f940256bd",
+      "pages": "1-2,4",
+      "note": "实际每股现金0.125元、资本公积金转增0.2股；除权参考摊薄0.124元/0.198股仅供市场价格计算，不替代实际入账比例；新增无限售流通股20260629上市；账户级非整数分配未核实。"
     }
   ]
 }
