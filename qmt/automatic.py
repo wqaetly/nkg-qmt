@@ -8,7 +8,7 @@ from statistics import median
 from .config import AppError, atomic_json, dec, date_key, now_cn
 from .ledger import Ledger, rebalance_quantity
 from .market import Tushare
-from .research import statements, signed, implemented_dividends, annual_dividend_cash
+from .research import statements, signed, implemented_dividends, annual_dividend_cash, verified_zero_cash_years, disclosed_date
 from .service import read_json, update_ledger
 from .selection import load_rules, automatic_path
 from vendor.dividend_stock_research.dividend_price import calculate
@@ -31,12 +31,36 @@ def dividend_assessment(row, dossier, rules, *, earnings_basis='conservative_min
     recent=row.get('annual',[])[:1]
     if recent and recent[0].get('simple_fcf') is not None and signed(recent[0]['simple_fcf'])<=0:
         return stop('排除','最近完整年度自由现金流非正')
+    try:
+        confirmed=verified_zero_cash_years(dossier['data'].get('dividend',[]),row['symbol'],row['as_of'])
+        annual_periods=[p for p in statements(dossier['data']['income'],row['as_of']) if p.endswith('1231')] if confirmed else []
+        latest_year=int(max(annual_periods)[:4]) if annual_periods else None
+        zero_periods=[f'{latest_year-i}1231' for i in range(5) if f'{latest_year-i}1231' in confirmed] if latest_year else []
+    except (AppError,KeyError,TypeError,ValueError):
+        return stop('待数据核实','年度零现金分红登记或当时可用原始财报不一致，须重新核实')
+    if zero_periods:
+        result['zero_cash_periods']=zero_periods
+        result['zero_cash_decisions']=[confirmed[period] for period in zero_periods]
+        return stop('排除','、'.join(p[:4] for p in zero_periods)+'年度已核实全年零现金分红，不满足本策略连续现金分红规则；不代表公司无支付能力')
+    try:
+        balance=statements(dossier['data']['balancesheet'],row['as_of'],quarterly_share_conflicts=[])
+        latest=row.get('latest_period')
+        b=balance.get(latest,{})
+        fields={'total_liab':'总负债','total_assets':'总资产','st_borr':'短期借款',
+                'non_cur_liab_due_1y':'一年内到期非流动负债','money_cap':'货币资金'}
+        missing=[{'api':'balancesheet','period':latest,'field':key,'label':label,'available_on':disclosed_date(b)}
+                 for key,label in fields.items() if b and b.get(key) is None]
+        missing_reason='、'.join(item['label'] for item in missing)+f'（{latest}）缺失，不能按零计算' if missing else ''
+        if missing:
+            result['financial_gaps']=missing
+    except (AppError,KeyError,TypeError,ValueError):
+        return stop('待数据核实','；'.join(row.get('issues',[])[:-1]) or '当时可用资产负债表缺失或版本冲突')
     if not row.get('gate'):
-        return stop('待数据核实','；'.join(row.get('issues',[])[:-1]) or '结构化数据未通过')
+        reason=missing_reason or '；'.join(row.get('issues',[])[:-1]) or '结构化数据未通过'
+        return stop('待数据核实',reason)
     try:
         data, day = dossier['data'], row['as_of']
-        inc, indicators, balance = [statements(data[key],day,quarterly_share_conflicts=[] if key=='balancesheet' else None)
-                                   for key in ('income','fina_indicator','balancesheet')]
+        inc, indicators = [statements(data[key],day) for key in ('income','fina_indicator')]
         annual = row['annual'][:5]
         year = int(annual[0]['period'][:4])
         if [x['period'] for x in annual] != [f'{year-i}1231' for i in range(5)]:
@@ -77,9 +101,13 @@ def dividend_assessment(row, dossier, rules, *, earnings_basis='conservative_min
         if earnings <= 0:
             return stop('排除','滚动归母或扣非利润非正')
         b = balance[latest]
+        if any(item['field'] in ('total_liab','total_assets') for item in missing):
+            return stop('待数据核实',missing_reason)
         leverage = dec(b['total_liab'])/dec(b['total_assets'],positive=True)
         if leverage > dec(rules['max_debt_ratio']):
             return stop('排除','资产负债率超过实验上限')
+        if missing:
+            return stop('待数据核实',missing_reason)
         debt_due = dec(b['st_borr'])+dec(b['non_cur_liab_due_1y'])
         if debt_due > dec(b['money_cap'])+max(Decimal(0),signed(annual[0]['operating_cash'])):
             return stop('待数据核实','短期到期债务超过货币资金加上年经营现金流；须核查定存、金融资产与借款安排，不能据此断言偿债不足')

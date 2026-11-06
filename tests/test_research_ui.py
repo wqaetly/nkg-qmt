@@ -322,7 +322,7 @@ class ResearchUiTests(unittest.TestCase):
             self.assertIn('旧摘要未记录公司派息总额与逐事件股本依据，未从 DPS 回推金额',page)
             self.assertNotIn('class="dividend-cash"',page)
             self.assertNotIn('已核实派息股数',page)
-            self.assertIn('已实施 DPS / 元',page)
+            self.assertIn('已公告现金 DPS / 元',page)
             self.assertIn('id="market-chart-data"',page)
 
     def test_historical_unused_share_conflicts_preserve_counts_scope_and_unverified_status(self):

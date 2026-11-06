@@ -36,9 +36,111 @@ def disclosed_date(row):
     return max(date_key(day) for day in dates) if dates else "99999999"
 
 
+def _verified_source(item):
+    if not isinstance(item, dict):
+        raise AppError('已核实披露依据必须是原文登记对象。')
+    source = item.get('source', '')
+    digest = item.get('source_sha256', '')
+    pages = item.get('pages', '')
+    try:
+        parsed = urlparse(source) if isinstance(source, str) else None
+    except ValueError:
+        parsed = None
+    if (not parsed or parsed.scheme != 'https' or not parsed.hostname or parsed.username or parsed.password
+            or not isinstance(digest, str) or len(digest) != 64
+            or any(c not in '0123456789abcdef' for c in digest)
+            or not isinstance(pages, str) or not pages.strip()):
+        raise AppError('已核实披露缺少有效的原文链接、SHA256 或页码。')
+    return {'source': source, 'source_sha256': digest, 'pages': pages,
+            'available_on': date_key(item.get('available_on'))}
+
+
+def _financial_zero_rows(rows, as_of):
+    # Registration identity is separate from repeated copies of the same vendor row.
+    identity = lambda row: tuple(row.get(k) for k in ('ts_code', 'end_date', 'ann_date', 'f_ann_date', 'report_type'))
+    visible = [row for row in rows if disclosed_date(row) <= as_of and row.get('end_date', '99999999') <= as_of]
+    balance_rows = [row for row in visible if any(k in row for k in ('st_borr', 'money_cap', 'total_assets', 'total_liab'))]
+    if any('verified_zero_fields' in row for row in visible):
+        raise AppError('原始财报不能自带已核实补零证据。')
+    corrections = {}
+    for item in DISCLOSURES.get('financial_zero_fields', []):
+        expected = item.get('expected', {})
+        if not any(row.get('ts_code') == expected.get('ts_code') for row in balance_rows):
+            continue
+        available = date_key(item.get('available_on'))
+        if available > as_of:
+            continue
+        proof = _verified_source(item)
+        if (item.get('field') != 'st_borr' or item.get('value') != '0'
+                or 'st_borr' not in expected or expected['st_borr'] is not None
+                or not expected.get('ts_code') or str(expected.get('report_type')) not in {'1', '4'}
+                or not date_key(expected.get('end_date')) <= disclosed_date(expected) <= available):
+            raise AppError('已核实财务补零登记的字段、原始行或公告时点无效。')
+        key = identity(expected)
+        if key in corrections:
+            raise AppError('已核实财务补零登记重复。')
+        corrections[key] = (expected, {**proof, 'field': 'st_borr', 'value': '0',
+                                      'original': expected, 'note': item.get('note', '')})
+    result = []
+    for row in visible:
+        correction = corrections.get(identity(row)) if row in balance_rows else None
+        if correction:
+            expected, proof = correction
+            if json.dumps(row, sort_keys=True) != json.dumps(expected, sort_keys=True):
+                raise AppError('已核实财务补零的原始行已变化，须重新核对原文。')
+            row = {**row, 'st_borr': '0', 'verified_zero_fields': [json.loads(json.dumps(proof))]}
+        result.append(row)
+    return result
+
+
+def verified_zero_cash_years(rows, symbol, as_of):
+    """Return source-backed whole-FY zero decisions, never payment events."""
+    day = date_key(as_of)
+    result = {}
+
+    def available(row):
+        dates = ('ann_date', 'imp_ann_date') if row.get('div_proc') == '实施' else ('ann_date',)
+        known = [date_key(row[k]) for k in dates if row.get(k)]
+        if len(known) != len(dates) and (not known or max(known) <= day):
+            raise AppError('全年零现金分红的原始行缺少必要公告日期，不能视为未来披露。')
+        return max(known)
+
+    for item in DISCLOSURES.get('zero_cash_years', []):
+        if item.get('symbol') != symbol or date_key(item.get('available_on')) > day:
+            continue
+        proof = _verified_source(item)
+        period = date_key(item.get('period'))
+        if not period.endswith('1231') or period > proof['available_on'] or item.get('cash_dps') != '0':
+            raise AppError('已核实全年零现金分红登记的年度、金额或时点无效。')
+        if period in result:
+            raise AppError('已核实全年零现金分红登记重复。')
+        expected = item.get('expected')
+        if not isinstance(expected, list) or not expected or any(not isinstance(r, dict) for r in expected):
+            raise AppError('已核实全年零现金分红缺少完整原始行。')
+        # Future rows cannot change a decision or its fingerprint before disclosure.
+        expected = [r for r in expected if available(r) <= day]
+        actual = [r for r in rows if r.get('ts_code') == symbol
+                  and str(r.get('end_date', ''))[:4] == period[:4] and available(r) <= day]
+        serialize = lambda r: json.dumps(r, sort_keys=True)
+        if (not expected or not any(r.get('end_date') == period for r in expected)
+                or any(r.get('ts_code') != symbol or date_key(r.get('end_date'))[:4] != period[:4] for r in expected)
+                or len({serialize(r) for r in expected}) != len(expected)
+                or sorted(map(serialize, actual)) != sorted(map(serialize, expected))):
+            raise AppError('已核实全年零现金分红的可用原始行缺失、重复或已变化。')
+        if any(r.get('cash_div_tax') is not None and dec(r['cash_div_tax']) != 0 for r in actual):
+            raise AppError('已核实全年零现金分红与当时可见的现金方案冲突。')
+        supports = [_verified_source(source) for source in item.get('supporting_sources', [])]
+        if any(source['available_on'] > proof['available_on'] for source in supports):
+            raise AppError('全年零现金分红决定不能使用决定日之后的辅证。')
+        result[period] = {**proof, 'symbol': symbol, 'period': period, 'cash_dps': '0',
+                          'originals': json.loads(json.dumps(sorted(actual, key=serialize))),
+                          'supporting_sources': supports, 'note': item.get('note', '')}
+    return result
+
+
 def statements(rows, as_of, *, quarterly_share_conflicts=None):
     versions = {}
-    for row in rows:
+    for row in _financial_zero_rows(rows, date_key(as_of)):
         if disclosed_date(row) > as_of or row.get("end_date", "99999999") > as_of:
             continue
         if "report_type" in row and str(row["report_type"]) not in {"1", "4"}:
@@ -345,6 +447,11 @@ def summarize(dossier, basic, quote):
         except AppError as exc:
             row['issues'].append('分红记录：'+str(exc))
             events = []
+        try:
+            zero_cash_years = verified_zero_cash_years(dossier['data'].get('dividend', []), row['symbol'], as_of)
+        except AppError as exc:
+            row['issues'].append('全年零现金分红核实：'+str(exc))
+            zero_cash_years = {}
         row["events"] = events
         latest = inc[max(inc)] if inc else {}
         row["latest_period"] = latest.get("end_date")
@@ -369,6 +476,13 @@ def summarize(dossier, basic, quote):
             row["issues"].append("完整年度利润记录不足 5 年")
         # shortcut: unclassified payouts remain ordinary proxies; verified shares do not verify sustainability.
         dividend_years=annual_dividend_cash(events,bs,f"{int(as_of[:4])-8}0101")
+        for period, proof in zero_cash_years.items():
+            if dec(dividend_years.get(period, {}).get('implemented_dps', '0')) != 0:
+                raise AppError('全年零现金分红原文与已实施现金事件冲突。')
+            dividend_years[period] = {**dividend_years.get(period, {'dividend_cash_basis': []}),
+                                      'implemented_dps': '0', 'ordinary_dps': '0',
+                                      'estimated_dividend_cash': '0', 'estimated_ordinary_cash': '0',
+                                      'zero_cash_proof': proof}
         for period in annual:
             profit = signed(inc[period].get("n_income_attr_p"))
             cash = cf.get(period, {}).get("n_cashflow_act")
@@ -383,8 +497,11 @@ def summarize(dossier, basic, quote):
             row["annual"].append(item)
         if any(item["implemented_dps"] is None for item in row["annual"][:5]):
             row["issues"].append("近五年存在未取得已实施分红的年度，须区分停派、尚未实施和数据缺口")
-        if any(item['implemented_dps'] is not None and dec(item['implemented_dps'])==0 for item in row['annual'][:5]):
-            row['issues'].append('近五年存在已核实零现金分红年度；纯送转不算持续现金股息')
+        if any(item.get('zero_cash_proof') for item in row['annual'][:5]):
+            row['issues'].append('近五年存在原文核实的全年零现金分红，不满足连续现金分红规则')
+        if any(item['implemented_dps'] is not None and dec(item['implemented_dps'])==0
+               and not item.get('zero_cash_proof') for item in row['annual'][:5]):
+            row['issues'].append('近五年存在仅已实施零现金的年度记录，不能据此确认全年零派息；纯送转不算持续现金股息')
         if row["annual"]:
             newest = row["annual"][0]
             if newest["simple_fcf"] is not None and signed(newest["simple_fcf"]) < 0:
@@ -402,6 +519,8 @@ def summarize(dossier, basic, quote):
                     "events": events, "shares": row["share_count"]}
         if row['data_warnings']:
             evidence['data_warnings'] = row['data_warnings']
+        if zero_cash_years:
+            evidence['zero_cash_years'] = zero_cash_years
         row["evidence_hash"] = hashlib.sha256(json.dumps(evidence, sort_keys=True).encode()).hexdigest()
         row["gate"] = not row["issues"] and bool(row["price"]) and bool(row["share_count"])
         if row['status'] != '排除' and any('为负' in issue for issue in row['issues']):

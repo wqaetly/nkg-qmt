@@ -252,9 +252,44 @@ def dividend_cash_panel(annual):
             events.append(f'''<li><strong>{esc(basis)}</strong> · {number(item.get('shares'),0)} 股{share_period} · 依据可用日 {esc(item.get('available_on'))} · {link}
             <p>归属期 {esc(item.get('end_date'))} · 登记日 {esc(item.get('record_date'))} · 除息日 {esc(item.get('ex_date'))}<br>
             每股派息 {esc(item.get('cash_div_tax'))} 元 / 剔除已知特别后 {esc(item.get('ordinary_cash_div_tax'))} 元；本笔公司金额 {number(item.get('estimated_dividend_cash'))} 元 / 剔除已知特别后 {number(item.get('estimated_ordinary_cash'))} 元。</p></li>''')
-        details.append(f'<details><summary>{esc(year["period"][:4])} 年逐事件股本依据</summary>'+('<ul>'+''.join(events)+'</ul>' if events else '<p class="muted">未记录逐事件股本依据。</p>')+'</details>')
+        empty='已核实全年零现金分红，不产生支付事件或派息股数依据。' if year.get('zero_cash_proof') else '未记录逐事件股本依据。'
+        details.append(f'<details><summary>{esc(year["period"][:4])} 年逐事件股本依据</summary>'+('<ul>'+''.join(events)+'</ul>' if events else f'<p class="muted">{empty}</p>')+'</details>')
     return f'''<details class="dividend-cash"><summary>公司派息总额与股本依据</summary>{totals}
     <p class="muted">金额直接采用逐事件汇总；“—”表示未知或旧摘要未记录，不等于零，缺失时不以已知部分代替全年总额。股数核实不代表普通派息可持续；年报期末股数只是代理。个人税前应收仍按登记日实际持股 × 每股派息计算，不按公司总股本计算。</p>{''.join(details)}</details>'''
+
+
+def zero_cash_proof_panel(annual):
+    notes=[]
+    for year in annual:
+        proof=year.get('zero_cash_proof')
+        if not isinstance(proof,dict) or not proof:
+            continue
+        source=safe_url(proof.get('source'))
+        link=f'<a href="{esc(source)}" target="_blank" rel="noreferrer">核实原文</a>' if source else '原文链接不可用'
+        notes.append(f'<p class="muted zero-cash-proof">所属报告期 {esc(year.get("period"))}：已核实全年现金分红为 0；公告可用日 {esc(proof.get("available_on"))} · {link}。核实全年零不生成支付事件。</p>')
+    return ''.join(notes)
+
+
+def disclosure_diagnostics_panel(diagnostics):
+    panels=[]
+    zeros=diagnostics.get('verified_zero_cash',[])
+    if zeros:
+        rows=[]
+        for item in zeros:
+            source=safe_url(item.get('source'))
+            link=f'<a href="{esc(source)}" target="_blank" rel="noreferrer">核实原文</a>' if source else '原文链接不可用'
+            cells=''.join(f'<td>{esc(item.get(key))}</td>' for key in ('symbol','period','available_on','count'))
+            rows.append(f'<tr>{cells}<td>{link}<p>{esc(item.get("note"))}</p></td></tr>')
+        panels.append('<div id="verified-zero-cash"><p><strong>已核实全年零现金分红</strong></p><p class="muted">这是已知不满足连续现金分红规则，不是数据缺口，也不是现金入账；核实全年零不生成支付事件。</p>'
+                      '<div class="table-scroll"><table><thead><tr><th>公司</th><th>所属报告期</th><th>公告可用日</th><th>评估月次数</th><th>核实依据</th></tr></thead><tbody>'+''.join(rows)+'</tbody></table></div></div>')
+    gaps=diagnostics.get('financial_gaps',[])
+    if gaps:
+        panels.append('<div id="financial-gaps"><p><strong>缺失报表字段</strong></p><p class="muted">缺失报表字段不能补零；未知金额与已核实零分红分开记录。</p>'+table(
+            ['公司','报告期','字段','字段说明','公告可用日','评估月次数'],
+            [[item.get(key) for key in ('symbol','period','field','label','available_on','count')] for item in gaps])+'</div>')
+    if panels:
+        panels.append('<p class="muted">以上次数来自保存的公司 / 报告期评估记录，同一公司跨月可能重复计数，不等于独立公司数、订单或现金入账次数。</p>')
+    return ''.join(panels)
 
 
 def research_panel(research, backtest, chart_symbols=(), history=''):
@@ -329,7 +364,7 @@ def research_panel(research, backtest, chart_symbols=(), history=''):
                 pool.get('evaluated_count')] for pool in rebalances])
             pool_table+='<p class="muted">仅在年末重筛候选池，月度评估当期候选；不是每月扫描全市场。实际入池是候选覆盖，不是实际持仓；已检查数使用实验记录，旧记录未保存时显示“—”。未入池候选含条件不满足或排序未选中，不等于财务不合格；年度淘汰原因按公司 / 建池时点计数，同一公司可能重复出现。</p>'
         diagnoses=f'''<details class="research-results" id="research-diagnostics"><summary>建池淘汰、筛选与未成交原因</summary><p>{esc(selection_note)}</p><p>共 {esc(diagnostics.get('evaluations'))} 次公司 / 时点评估。{esc(states)}</p>
-        {funnel}{pool_table}{conflicts}<p class="muted">建池淘汰按{'公司 / 建池时点' if rebalances else '公司'}计数，筛选按公司 / 时点计数，执行跳过按事件计数，三者不能相加。数据不足、未达到价格要求和资金不够买一手是不同原因；不能为了产生交易把它们视为通过。</p>{reasons}</details>'''
+        {funnel}{pool_table}{conflicts}{disclosure_diagnostics_panel(diagnostics)}<p class="muted">建池淘汰按{'公司 / 建池时点' if rebalances else '公司'}计数，筛选按公司 / 时点计数，执行跳过按事件计数，三者不能相加。数据不足、未达到价格要求和资金不够买一手是不同原因；不能为了产生交易把它们视为通过。</p>{reasons}</details>'''
     limitations=research.get('limitations',[])+backtest.get('limitations',[])
     notes=''.join(f'<li>{esc(note)}</li>' for note in dict.fromkeys(limitations) if note!=backtest.get('protocol',{}).get('monthly_targets'))
     backtest_state=backtest.get('status') or research.get('backtest',{}).get('status') or '待运行'
@@ -486,7 +521,7 @@ def render(workspace, ledger, report, status=None):
         if row['symbol'] not in focus:
             continue
         state = row["status"]
-        annual = table(["年度","归母利润 / 万元","扣非利润 / 万元","经营现金 / 万元","资本支出 / 万元","简化 FCF / 万元","已实施 DPS / 元","剔除已知特别后 DPS","审计"],
+        annual = table(["年度","归母利润 / 万元","扣非利润 / 万元","经营现金 / 万元","资本支出 / 万元","简化 FCF / 万元","已公告现金 DPS / 元","剔除已知特别后 DPS","审计"],
             [[a['period'][:4],*[number(float(a[k])/10000) if a.get(k) is not None else '待核实' for k in ('profit','deducted_profit','operating_cash','capex','simple_fcf')],number(a.get('implemented_dps'),3),number(a.get('ordinary_dps'),3),a.get('audit')] for a in row.get('annual',[])])
         scenarios = row.get("scenarios",[])
         matrix = table(["经营情景","要求税前股息率","预计 DPS / 元","参考价上限 / 元","按当前价情景股息率","价格条件"],
@@ -509,7 +544,7 @@ def render(workspace, ledger, report, status=None):
         <span class="pill {'danger' if state=='排除' else 'ready' if state=='可进一步评估' else ''}">{esc(state)}</span><span class="expand">＋</span></summary>
         <div class="detail-body"><button type="button" class="chart-link" data-chart-symbol="{esc(row['symbol'])}">查看 K 线与模拟操作</button><h3>三项筛选 · {esc(assessment.get('state','尚未模拟评估'))}</h3>{gates}<p>{esc(lot_note)}</p><div class="detail-grid"><section><h3>核查结论</h3><ul>{issues}</ul>{data_warnings_panel(row.get('data_warnings',[]))}<p class="muted">最新报告期 {esc(row.get('latest_period'))} · 取数截至 {esc(row.get('as_of'))}</p></section>
         <section><h3>下一步</h3><p>{esc(row.get('review_note','补充原始公告与情景假设后再评估。'))}</p><p class="muted">研究确认有效期由配置控制；新披露或股本变化将使旧确认失效。不会因价格下跌自动加仓。</p></section></div>
-        <h3>近年分红与支付能力</h3>{annual}{dividend_cash_panel(row.get('annual',[]))}{corrections}<p class="muted">财务金额按原始披露口径，派息总额估算另列股本依据；同年度中期与年度派息合计，不含未实施预案。只剔除有原文依据的已知特别分红，其余记录仍需核实。DPS 未统一历史股本口径，不能直接比较增速；空白不是零。金融企业不计算工业 FCF。</p>
+        <h3>近年分红与支付能力</h3>{annual}{zero_cash_proof_panel(row.get('annual',[]))}{dividend_cash_panel(row.get('annual',[]))}{corrections}<p class="muted">财务金额按原始披露口径，派息总额估算另列股本依据。已公告现金 DPS 汇总已披露实施方案及核实的全年零分红；实施公告不等于已到账，核实全年零不生成支付事件。同年度中期与年度派息合计，不含未实施预案。只剔除有原文依据的已知特别分红，其余记录仍需核实。DPS 未统一历史股本口径，不能直接比较增速；空白不是零。金融企业不计算工业 FCF。</p>
         <h3>三种情景 × 股息率参考价</h3>{matrix}
         <details class="research"><summary>联网线索与 AI 研究草稿</summary><p class="muted">{esc(context.get('fetched_at','尚未运行'))} · 搜索摘要未代替原文核查；AI 不改变计划和账本。</p>{analysis}<ul>{warnings}</ul><ol class="sources">{sources}</ol></details></div></details>''')
     accounts = []

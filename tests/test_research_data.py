@@ -228,7 +228,8 @@ class DisclosedDataTests(unittest.TestCase):
                          {'trade_date':'20221230','close':'8','total_share':'.1','dv_ttm':3})
         year=next(a for a in result['annual'] if a['period']=='20201231')
         self.assertEqual(year['implemented_dps'],'0')
-        self.assertTrue(any('已核实零现金分红' in s for s in result['issues']))
+        self.assertTrue(any('仅已实施零现金的年度记录，不能据此确认全年零派息' in s for s in result['issues']))
+        self.assertNotIn('zero_cash_proof',year)
         self.assertFalse(result['gate'])
 
     def test_material_share_conflict_is_preserved_and_names_field(self):

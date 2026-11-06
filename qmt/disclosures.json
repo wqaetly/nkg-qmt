@@ -402,5 +402,107 @@
       "pages": "1-2,4",
       "note": "实际每股现金0.125元、资本公积金转增0.2股；除权参考摊薄0.124元/0.198股仅供市场价格计算，不替代实际入账比例；新增无限售流通股20260629上市；账户级非整数分配未核实。"
     }
+  ],
+  "financial_zero_fields": [
+    {
+      "expected": {
+        "ts_code": "601225.SH",
+        "ann_date": "20230831",
+        "f_ann_date": "20230831",
+        "end_date": "20230630",
+        "report_type": "1",
+        "comp_type": "1",
+        "total_share": 9695000000.0,
+        "money_cap": 57929254053.56,
+        "st_borr": null,
+        "lt_borr": 4352684697.4,
+        "non_cur_liab_due_1y": 1174511961.38,
+        "total_liab": 91363249666.0,
+        "total_assets": 229881796717.0
+      },
+      "field": "st_borr",
+      "value": "0",
+      "available_on": "20230831",
+      "source": "https://static.cninfo.com.cn/finalpage/2023-08-31/1217710865.PDF",
+      "source_sha256": "9e345cb235c0c36c5e3deaf38bfc03c944fe007ce7667670be69791c31696d30",
+      "pages": "151",
+      "note": "陕西煤业2023半年报附注32：信用借款与短期借款合计的期末余额明确为0.00元。只修正该合并报表精确原始行，不将其他季度的主表空栏或不适用自动补零。"
+    }
+  ],
+  "zero_cash_years": [
+    {
+      "symbol": "002191.SZ",
+      "period": "20241231",
+      "available_on": "20250628",
+      "expected": [
+        {
+          "ts_code": "002191.SZ",
+          "end_date": "20241231",
+          "ann_date": "20250429",
+          "div_proc": "预案",
+          "cash_div_tax": 0.0,
+          "stk_div": 0.0,
+          "record_date": null,
+          "ex_date": null,
+          "pay_date": null,
+          "imp_ann_date": null
+        },
+        {
+          "ts_code": "002191.SZ",
+          "end_date": "20241231",
+          "ann_date": "20250628",
+          "div_proc": "股东大会通过",
+          "cash_div_tax": null,
+          "stk_div": 0.0,
+          "record_date": null,
+          "ex_date": null,
+          "pay_date": null,
+          "imp_ann_date": null
+        },
+        {
+          "ts_code": "002191.SZ",
+          "end_date": "20240630",
+          "ann_date": "20240824",
+          "div_proc": "预案",
+          "cash_div_tax": 0.0,
+          "stk_div": 0.0,
+          "record_date": null,
+          "ex_date": null,
+          "pay_date": null,
+          "imp_ann_date": null
+        },
+        {
+          "ts_code": "002191.SZ",
+          "end_date": "20240630",
+          "ann_date": "20240824",
+          "div_proc": "股东大会通过",
+          "cash_div_tax": null,
+          "stk_div": 0.0,
+          "record_date": null,
+          "ex_date": null,
+          "pay_date": null,
+          "imp_ann_date": null
+        }
+      ],
+      "cash_dps": "0",
+      "source": "https://static.cninfo.com.cn/finalpage/2025-06-28/1224014968.PDF",
+      "source_sha256": "86a0200ede08668258230eadf80499e10ab96dda35aa597ab7218fce5e322362",
+      "pages": "1、4—5、14",
+      "supporting_sources": [
+        {
+          "source": "https://static.cninfo.com.cn/finalpage/2025-04-29/1223360625.PDF",
+          "source_sha256": "77f603f089b1c6e7e12146ee037475f9e51e3721b6a6f6b22af6cf059f4c6406",
+          "available_on": "20250429",
+          "pages": "1—2"
+        },
+        {
+          "source": "https://disc.static.szse.cn/disc/disk03/finalpage/2024-08-23/478d2777-7106-4fb2-bfd5-7d3d3c63f51d.PDF",
+          "source_sha256": "c430b4a7c445862ca610cd8b3384ac6afadb71ec20a83a5b60dcb6503b50d13a",
+          "available_on": "20240824",
+          "pages": "2"
+        }
+      ],
+      "note": "劲嘉股份2024年度全年现金分红为0：中报确认中期不派，2025-030专项公告列全年现金总额0，2024年度股东大会于2025-06-27通过年度不分配议案，决议2025-06-28可用。此前仅预案，不回填。2024日历年支付的2023年度现金不属于FY2024。没有创建除息、派息或现金事件。"
+    }
   ]
 }
