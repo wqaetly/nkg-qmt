@@ -105,6 +105,25 @@ def _inputs(data, signals, max_holdings):
             if bar['up'] is not None and bar['down'] is not None and bar['down']>=bar['up']:
                 raise AppError('回测涨跌停范围异常。')
             bars[symbol][day] = bar
+    membership = data.get('universe_membership')
+    if 'universe_membership' in data:
+        if not isinstance(membership,dict) or set(membership)!=set(bars):
+            raise AppError('历史成员区间必须完整对应回测股票集合。')
+        universe_start = date_key(data.get('universe_as_of',sessions[0]))
+        for code,windows in membership.items():
+            if not isinstance(windows,list) or not windows:
+                raise AppError('历史成员区间必须为非空列表。')
+            previous_end = None
+            for index,window in enumerate(windows):
+                if not isinstance(window,dict) or set(window)!={'start','end'}:
+                    raise AppError('历史成员区间须明确提供 start 和 end。')
+                start = date_key(window['start'])
+                end = date_key(window['end']) if window['end'] is not None else None
+                if (start not in sessions or start<universe_start or
+                        (end is not None and (end not in sessions or end<=start)) or
+                        (index and (previous_end is None or start<previous_end))):
+                    raise AppError('历史成员区间须按交易日递增且不重叠，结束日不属于该区间。')
+                previous_end = end
     snapshots = {}
     for day,snapshot in signals.items():
         candidates = snapshot.get('candidates') if isinstance(snapshot,dict) else snapshot
@@ -113,6 +132,8 @@ def _inputs(data, signals, max_holdings):
             raise AppError('信号日期不在回测交易日内，或候选格式无效。')
         if len(set(frozen))!=len(frozen) or any(code not in bars for code in frozen):
             raise AppError('冻结股票代码重复或缺少行情。')
+        if membership is not None and any(day<membership[code][0]['start'] for code in frozen):
+            raise AppError('尚未首次入池的股票不能作为历史冻结持仓。')
         if set(frozen)&{c['symbol'] for c in candidates}:
             raise AppError('同一股票不能同时是买入候选与资料缺失冻结对象。')
         if len({c['symbol'] for c in candidates})!=len(candidates):
@@ -120,6 +141,9 @@ def _inputs(data, signals, max_holdings):
         for candidate in candidates:
             if candidate['symbol'] not in bars or date_key(candidate['known_on'])>day:
                 raise AppError('信号含未来依据或缺少行情。')
+            if membership is not None and not any(window['start']<=day and (window['end'] is None or day<window['end'])
+                                                  for window in membership[candidate['symbol']]):
+                raise AppError('买入候选不在当日有效的历史成员区间内。')
             dec(candidate['reference_price'],positive=True)
         snapshots[day]={'candidates':candidates,'freeze':frozen}
     dividends = {}
@@ -156,6 +180,7 @@ def simulate(data, signals, cfg, initial_cash=None, max_holdings=5):
 
     data: sessions, bars[symbol][day] (open/high/low/close/vol/up/down),
     industries[symbol], dividends[symbol] (implemented events), universe_as_of.
+    Optional universe_membership[symbol]: [{start, end}], with end exclusive.
     signals[day]: [{symbol, reference_price, known_on, reason?}, ...], or
     {candidates: [...], freeze: [symbol,...]}. Frozen held shares are preserved,
     count toward caps, and block new buys; frozen unheld names do not block others.

@@ -29,6 +29,53 @@ def dividend():
 
 
 class BacktestTests(unittest.TestCase):
+    def test_membership_rejects_future_entry_and_exit_day_but_allows_reentry(self):
+        data,signals,cfg=inputs()
+        data['universe_membership']={CODE:[{'start':DAYS[2],'end':None}]}
+        with self.assertRaisesRegex(AppError,'成员区间'):simulate(data,signals,cfg)
+        data['universe_membership']={CODE:[{'start':DAYS[0],'end':DAYS[2]}]}
+        with self.assertRaisesRegex(AppError,'成员区间'):simulate(data,{DAYS[2]:signals[DAYS[0]]},cfg)
+        data['universe_membership'][CODE].append({'start':DAYS[3],'end':None})
+        signals.update({DAYS[2]:[],DAYS[3]:signals[DAYS[0]]})
+        result=simulate(data,signals,cfg)
+        self.assertEqual([t['side'] for t in result['trades']],['buy','sell','buy'])
+        self.assertEqual([t['trade_date'] for t in result['trades']],[DAYS[1],DAYS[3],DAYS[4]])
+        data['universe_membership'][CODE][1]['start']=DAYS[2]
+        self.assertEqual(len(simulate(data,{DAYS[2]:signals[DAYS[0]]},cfg)['trades']),1)
+
+    def test_membership_windows_require_matching_codes_and_valid_nonoverlapping_dates(self):
+        window={'start':DAYS[0],'end':DAYS[2]}
+        invalid=[None,{}, {'600002.SH':[window]}, {CODE:[]}, {CODE:[{'start':'20200132','end':None}]},
+                 {CODE:[{'start':DAYS[0],'end':'20200201'}]}, {CODE:[{'start':DAYS[2],'end':DAYS[1]}]},
+                 {CODE:[window,{'start':DAYS[1],'end':None}]},
+                 {CODE:[{'start':DAYS[0],'end':None},{'start':DAYS[3],'end':None}]}]
+        for membership in invalid:
+            data,_,cfg=inputs();data['universe_membership']=membership
+            with self.subTest(membership=membership),self.assertRaises(AppError):simulate(data,{},cfg)
+
+    def test_membership_cannot_freeze_a_stock_before_first_entry(self):
+        data,_,cfg=inputs();data['universe_membership']={CODE:[{'start':DAYS[2],'end':None}]}
+        with self.assertRaisesRegex(AppError,'首次入池'):
+            simulate(data,{DAYS[0]:{'candidates':[],'freeze':[CODE]}},cfg)
+
+    def test_exited_frozen_holding_keeps_cross_year_cash_and_dividend_entitlement(self):
+        data,signals,cfg=inputs();days=['20191230','20191231','20200102','20200103','20200106']
+        data.update(sessions=days,universe_as_of=days[0],
+                    universe_membership={CODE:[{'start':days[0],'end':days[2]}]},
+                    bars={CODE:{d:bar('8' if d<days[2] else '7.5') for d in days}},
+                    dividends={CODE:[{**dividend(),'ann_date':'20191201','imp_ann_date':'20191220',
+                                      'record_date':days[1],'ex_date':days[2],'pay_date':days[4]}]})
+        signal={**signals[DAYS[0]][0],'known_on':days[0]}
+        result=simulate(data,{days[0]:[signal],days[2]:{'candidates':[],'freeze':[CODE]}},cfg)
+        curve={p['day']:p for p in result['equity_curve']}
+        self.assertEqual(len(result['trades']),1)
+        self.assertEqual(curve[days[-1]]['positions'],{CODE:200})
+        self.assertEqual(Decimal(curve[days[2]]['receivable']),Decimal('100'))
+        self.assertEqual(Decimal(curve[days[-1]]['cash']),Decimal('8495'))
+        self.assertEqual(Decimal(curve[days[-1]]['equity']),Decimal('9995'))
+        self.assertEqual(len(result['cash_events']),1)
+        self.assertEqual(result['metrics']['costs'],'5.00')
+
     def test_new_capital_supports_twenty_slots_without_rewriting_legacy_fixture(self):
         data,signals,_=inputs();cfg={**load_config(),'slippage_bps':0}
         for i in range(1,26):

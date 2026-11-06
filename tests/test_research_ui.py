@@ -72,9 +72,9 @@ class ResearchUiTests(unittest.TestCase):
             self.assertIn('id="experiment-history"',page)
             self.assertNotIn(' open',page)
             self.assertIn('2 个版本',page)
-            self.assertIn('v7-long · 建池 20141231 · 20 只',page)
+            self.assertIn('v7-long · 首次建池 20141231 · 累计 20 只',page)
             self.assertIn('输入待核实</td><td>—</td><td>—</td><td>—',page)
-            self.assertIn('v9-quality-long · 建池 20141231 · 7 只',page)
+            self.assertIn('v9-quality-long · 首次建池 20141231 · 累计 7 只',page)
             self.assertIn('¥ 100,000.00 · 20141231—20261106',page)
             self.assertIn('8.00%',page)
             self.assertIn('35.00%',page)
@@ -117,7 +117,7 @@ class ResearchUiTests(unittest.TestCase):
                   'diagnostics':{'evaluations':35,'reasons':[{'reason':'价格偏高','count':20}],
                       'skips':[{'reason':'一手超出资金上限','count':6}]}}
         page=research_panel(self.research(),backtest)
-        self.assertIn('历史建池 7 只',page)
+        self.assertIn('历史涉及 7 只',page)
         self.assertIn('建池 7 只 / 目标 20 只；候选 30 家，已评估 12 家',page)
         self.assertEqual(page.count('现金不足 &lt;script&gt;x&lt;/script&gt;'),1)
         self.assertIn('现金不足 &lt;script&gt;x&lt;/script&gt;</td><td>3</td>',page)
@@ -126,7 +126,7 @@ class ResearchUiTests(unittest.TestCase):
         self.assertIn('三者不能相加',page)
         self.assertNotIn('<script>x</script>',page)
         backtest['coverage']['stocks']=0
-        self.assertIn('历史建池 0 只',research_panel(self.research(),backtest))
+        self.assertIn('历史涉及 0 只',research_panel(self.research(),backtest))
 
     def test_optional_records_and_untrusted_text_are_safe(self):
         with tempfile.TemporaryDirectory() as tmp:

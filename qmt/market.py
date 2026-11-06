@@ -190,7 +190,6 @@ class Tushare:
         return [result[day] for day in sorted(result)]
 
     def dossier(self, symbol, as_of, start_year=None):
-        explicit_history = start_year is not None
         if start_year is None:
             start_year = int(date_key(as_of)[:4]) - 9
         if type(start_year) is not int:
@@ -210,12 +209,10 @@ class Tushare:
                 # Dividend has no documented date-range pagination; a full page must stay blocked.
                 if api == "dividend":
                     rows = self.call(api, {"ts_code": symbol}, fields)
-                elif explicit_history:
-                    rows = self.yearly(api, symbol, start, as_of, fields)
                 else:
                     try:
                         rows = self.call(api, {"ts_code": symbol, "start_date": start, "end_date": as_of}, fields)
-                        # Preserve the previous conservative statement guard, without multiplying normal daily requests.
+                        # Split only full batches; short histories keep the original request and cache key.
                         if len(rows) >= 100:
                             raise PageLimitError(f"{api} 达到财报条数警戒线。")
                     except PageLimitError:

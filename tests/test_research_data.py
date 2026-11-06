@@ -4,12 +4,111 @@ import json
 import unittest
 from decimal import Decimal
 
-from qmt.config import AppError
-from qmt.research import DISCLOSURES, implemented_dividends, normalize_cash_overlaps, normalize_stock_only, statements, summarize
+from qmt.backtest import simulate
+from qmt.config import AppError, load_config
+from qmt.research import DISCLOSURES, implemented_dividends, normalize_cash_joint_periods, normalize_cash_overlaps, normalize_stock_only, statements, summarize
 from test_automatic import fixture
 
 
 class DisclosedDataTests(unittest.TestCase):
+    def test_joint_distribution_is_one_payment_with_exact_fiscal_components(self):
+        correction=DISCLOSURES['cash_joint_periods'][0]
+        originals=copy.deepcopy(correction['expected'])
+        events=implemented_dividends(originals,'20260526')
+        self.assertEqual(len(events),1)
+        event=events[0]
+        self.assertEqual(event['event_kind'],'cash_joint_periods')
+        self.assertEqual(event['cash_div_tax'],'0.312')
+        self.assertEqual(event['end_date'],'20260331')
+        self.assertEqual(event['fiscal_components'],[
+            {'end_date':'20251231','cash_div_tax':'0.132'},
+            {'end_date':'20260331','cash_div_tax':'0.18'}])
+        self.assertNotIn('special_cash_div_tax',event)
+        self.assertNotIn('ordinary_cash_div_tax',event)
+        self.assertEqual(event['correction_originals'],originals)
+        self.assertEqual(event['correction_fingerprint'],'097140cf8af3e877dc845d2b872326d2ff348a93518fdfa4ece1498e6081e35d')
+        self.assertEqual(event['correction_source'],correction['source'])
+        self.assertEqual(implemented_dividends(events,'20260526'),events)
+        self.assertEqual(implemented_dividends(originals[::-1],'20260526'),events)
+        self.assertEqual(originals,correction['expected'])
+
+    def test_joint_distribution_is_not_known_before_implementation_notice(self):
+        originals=DISCLOSURES['cash_joint_periods'][0]['expected']
+        self.assertEqual(normalize_cash_joint_periods(originals,'20260525'),originals)
+        self.assertEqual(implemented_dividends(originals,'20260525'),[])
+        self.assertEqual(implemented_dividends(implemented_dividends(originals,'20260526'),'20260525'),[])
+
+    def test_future_joint_revision_does_not_freeze_an_earlier_signal(self):
+        originals=DISCLOSURES['cash_joint_periods'][0]['expected']
+        future={**originals[1],'ann_date':'20260610','imp_ann_date':'20260610','cash_div_tax':.181}
+        expected=implemented_dividends(originals,'20260526')
+        self.assertEqual(implemented_dividends(originals+[future],'20260526'),expected)
+        self.assertEqual(implemented_dividends(expected+[future],'20260526'),expected)
+        with self.assertRaises(AppError):implemented_dividends(originals+[future],'20260610')
+
+    def test_joint_distribution_requires_both_exact_rows_and_no_extras(self):
+        originals=DISCLOSURES['cash_joint_periods'][0]['expected']
+        cases=[originals[:1],originals[1:],originals+[originals[0]]]
+        for changes in ({'cash_div_tax':.181},{'pay_date':'20260602'},{'ann_date':'20260523'},
+                        {'record_date':'20260528'},{'end_date':None},{'extra_source_field':'new schema'}):
+            cases.append([originals[0],{**originals[1],**changes}])
+        cases.append([{**r,'ts_code':'600099.SH'} for r in originals])
+        for rows in cases:
+            with self.subTest(rows=rows),self.assertRaises(AppError):
+                implemented_dividends(rows,'20260526')
+
+    def test_joint_distribution_metadata_and_fiscal_attribution_cannot_be_forged(self):
+        event=implemented_dividends(DISCLOSURES['cash_joint_periods'][0]['expected'],'20260526')[0]
+        changes=[{'cash_div_tax':'0.18'},{'end_date':'20251231'},{'correction_fingerprint':'fake'},
+                 {'correction_source':'https://example.com/claim'},{'correction_available_on':'20260429'},
+                 {'correction_originals':event['correction_originals'][:1]},
+                 {'fiscal_components':[{'end_date':'20251231','cash_div_tax':'0.312'}]},
+                 {'event_kind':'cash_overlap'},{'special_cash_div_tax':'.18'}]
+        variants=[{**event,**c} for c in changes]
+        variants.append({k:v for k,v in event.items() if k!='event_kind'})
+        for row in variants:
+            with self.subTest(row=row),self.assertRaises(AppError):
+                implemented_dividends([row],'20260526')
+        unknown={**event,'ts_code':'600099.SH','event_kind':'cash','correction_originals':[]}
+        with self.assertRaises(AppError):implemented_dividends([unknown],'20260526')
+
+    def test_joint_fiscal_years_and_window_boundary_preserve_cash_total(self):
+        originals=DISCLOSURES['cash_joint_periods'][0]['expected']
+        _,dossier=fixture(day='20270430',symbol='002043.SZ')
+        dossier['data']['dividend']=copy.deepcopy(originals)
+        for api in ('income','cashflow','balancesheet','fina_indicator','fina_audit'):
+            source=next(r for r in dossier['data'][api] if r['end_date']=='20251231')
+            dossier['data'][api].append({**source,'end_date':'20261231','ann_date':'20270401'})
+        quote={'trade_date':dossier['as_of'],'close':'8','total_share':'.1','dv_ttm':3}
+        result=summarize(dossier,{'name':'兔宝宝','industry':'装饰材料'},quote)
+        annual={r['period']:r for r in result['annual']}
+        for period,dps in (('20251231','0.132'),('20261231','0.18')):
+            self.assertEqual(annual[period]['implemented_dps'],dps)
+            self.assertEqual(annual[period]['ordinary_dps'],dps)
+        # Cash stays whole if either fiscal component is in scope; old research periods do not.
+        events=implemented_dividends(originals,'20341231',earliest_period='20260101')
+        self.assertEqual(events[0]['cash_div_tax'],'0.312')
+        self.assertEqual(len(events[0]['fiscal_components']),2)
+        self.assertEqual(implemented_dividends(originals,'20341231',earliest_period='20260401'),[])
+        dossier['as_of']='20341231';quote['trade_date']='20341231'
+        annual={r['period']:r for r in summarize(dossier,{'name':'兔宝宝'},quote)['annual']}
+        self.assertIsNone(annual['20251231']['implemented_dps'])
+        self.assertIsNone(annual['20251231']['ordinary_dps'])
+        self.assertEqual(annual['20261231']['implemented_dps'],'0.18')
+
+    def test_joint_cash_event_is_settled_once_by_existing_replay(self):
+        code='002043.SZ';days=['20260526','20260527','20260528','20260529','20260601','20260602']
+        events=implemented_dividends(DISCLOSURES['cash_joint_periods'][0]['expected'],days[-1])
+        data={'sessions':days,'universe_as_of':days[0],'industries':{code:'测试行业'},'dividends':{code:events},
+              'bars':{code:{d:{'open':'8','high':'8.2','low':'7.8','close':'8','vol':'10000','up':'8.8','down':'7.2'} for d in days}}}
+        signals={days[0]:[{'symbol':code,'reference_price':'8','known_on':days[0]}]}
+        cfg={**load_config(),'slippage_bps':0,'paper_cash':'10000','paper_max_position':'2000','paper_max_sector':'4000'}
+        result=simulate(data,signals,cfg,max_holdings=5)
+        self.assertEqual(len(result['cash_events']),1)
+        self.assertEqual(Decimal(result['cash_events'][0]['amount']),Decimal('62.40'))
+        self.assertEqual(result['equity_curve'][-1]['positions'],{code:200})
+        self.assertEqual(Decimal(result['equity_curve'][-1]['cash']),Decimal('8457.40'))
+
     def test_shenhua_total_includes_special_and_keeps_exact_evidence(self):
         correction=DISCLOSURES['cash_dividend_overlaps'][0]
         originals=copy.deepcopy(correction['expected'])

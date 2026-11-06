@@ -77,9 +77,33 @@ def normalize_cash_overlaps(rows, as_of):
     return rows
 
 
+def normalize_cash_joint_periods(rows, as_of):
+    for correction in DISCLOSURES['cash_joint_periods']:
+        if correction['available_on']>as_of:
+            continue
+        expected=correction['expected']
+        event=[r for r in rows if all(r.get(k)==expected[0][k] for k in ('ts_code','record_date','div_proc'))
+               and max(r.get('ann_date') or '99999999',r.get('imp_ann_date') or '99999999')<=as_of]
+        if not event or (len(event)==1 and event[0].get('event_kind')=='cash_joint_periods'):
+            continue
+        originals=sorted((dict(r) for r in event),key=lambda r:str(r.get('end_date') or ''))
+        if originals!=sorted(expected,key=lambda r:r['end_date']):
+            raise AppError('联合派息原始记录不完整或与已核实公告不一致。')
+        # Keep one cash payment, but never attribute the combined amount to one fiscal period.
+        normalized={**originals[-1],'event_kind':'cash_joint_periods',
+                    'cash_div_tax':str(sum((dec(r['cash_div_tax']) for r in originals),Decimal(0))),
+                    'fiscal_components':[{'end_date':r['end_date'],'cash_div_tax':str(dec(r['cash_div_tax']))} for r in originals],
+                    'correction_source':correction['source'],'correction_source_pages':correction['pages'],
+                    'correction_available_on':correction['available_on'],'correction_note':correction['note'],
+                    'correction_originals':originals,
+                    'correction_fingerprint':hashlib.sha256(json.dumps(originals,sort_keys=True).encode()).hexdigest()}
+        rows=[r for r in rows if r not in event]+[normalized]
+    return rows
+
+
 def normalize_disclosed_dividends(rows, as_of):
-    """Verified provider overlaps only; unknown conflicts still fail closed."""
-    rows=normalize_cash_overlaps(normalize_stock_only(rows,as_of),as_of)
+    """Source-verified events only; unknown conflicts still fail closed."""
+    rows=normalize_cash_joint_periods(normalize_cash_overlaps(normalize_stock_only(rows,as_of),as_of),as_of)
     if as_of<'20230707':
         return rows
     event=[r for r in rows if r.get('ts_code')=='600600.SH' and r.get('record_date')=='20230713' and r.get('div_proc')=='实施']
@@ -112,6 +136,10 @@ def implemented_dividends(rows, as_of, earliest_period=None):
             continue
         for field in ("record_date", "ex_date", "end_date"):
             date_key(row.get(field))
+        if row.get('event_kind')=='cash_joint_periods' or 'fiscal_components' in row:
+            originals=row.get('correction_originals',[])
+            if not originals or normalize_cash_joint_periods(originals,as_of)!=[row]:
+                raise AppError('联合派息归并不匹配已核实原始记录。')
         if row.get('event_kind')=='cash_overlap':
             originals=row.get('correction_originals',[])
             if not originals or normalize_cash_overlaps(originals,as_of)!=[row]:
@@ -206,10 +234,14 @@ def summarize(dossier, basic, quote):
             row["issues"].append("完整年度利润记录不足 5 年")
         dividend_years, ordinary_years = {},{}
         for event in events:
-            year = event["end_date"][:4]
-            dividend_years[year] = dividend_years.get(year, Decimal(0)) + dec(event["cash_div_tax"])
-            # shortcut: unclassified payouts remain a proxy; company-policy research must verify them.
-            ordinary_years[year] = ordinary_years.get(year,Decimal(0))+dec(event.get('ordinary_cash_div_tax',event['cash_div_tax']))
+            components=event['fiscal_components'] if event.get('event_kind')=='cash_joint_periods' else [event]
+            for component in components:
+                if component['end_date']<f"{int(as_of[:4])-8}0101":
+                    continue
+                year = component["end_date"][:4]
+                dividend_years[year] = dividend_years.get(year, Decimal(0)) + dec(component["cash_div_tax"])
+                # shortcut: unclassified payouts remain a proxy; company-policy research must verify them.
+                ordinary_years[year] = ordinary_years.get(year,Decimal(0))+dec(component.get('ordinary_cash_div_tax',component['cash_div_tax']))
         for period in annual:
             profit = signed(inc[period].get("n_income_attr_p"))
             cash = cf.get(period, {}).get("n_cashflow_act")

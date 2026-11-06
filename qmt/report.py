@@ -1,6 +1,7 @@
 import html
 import json
 import math
+import re
 from collections import Counter
 from pathlib import Path
 
@@ -65,12 +66,12 @@ def experiment_history_panel(workspace):
         coverage=summary.get('coverage',{})
         cash=summary.get('initial_cash',summary.get('account',{}).get('initial_cash',protocol.get('account_config',{}).get('paper_cash')))
         period=f"¥ {number(cash)} · {coverage.get('start',protocol.get('selection_day','—'))}—{coverage.get('end',summary.get('as_of',protocol.get('replay_end','—')))}"
-        cohort=f"{version} · 建池 {protocol.get('selection_day','—')} · {coverage.get('stocks','—')} 只"
+        cohort=f"{version} · 首次建池 {protocol.get('selection_day','—')} · 累计 {coverage.get('stocks','—')} 只"
         versions[version]=[cohort,period,EXPERIMENT_STATES.get(state,state),percent(metrics.get('cagr')),
                            percent(metrics.get('average_exposure')),number(metrics.get('costs'))]
     if not versions:
         return ''
-    rows=table(['实验版本 / 建池日期 / 股票数','本金 / 回放区间','状态','年化收益','平均仓位','费用 / 元'],versions.values())
+    rows=table(['实验版本 / 首次建池 / 累计股票数','本金 / 回放区间','状态','年化收益','平均仓位','费用 / 元'],versions.values())
     return f'''<details class="research-results" id="experiment-history"><summary>历次实验对照 · {len(versions)} 个版本</summary>
     <p class="muted">仅列本工作区保存的各版本 5% 门槛主方案全期结果；保留旧实验，未混入其他本金工作区。输入阻塞时指标为 —，不是 0% 收益。建池日期、本金和区间不同的结果不能直接视作策略改进。</p>{rows}</details>'''
 
@@ -151,20 +152,27 @@ def research_panel(research, backtest, chart_symbols=(), history=''):
     diagnoses=''
     if diagnostics or selection:
         states='；'.join(f'{state} {count} 次' for state,count in diagnostics.get('states',{}).items())
-        rejected=Counter(item.get('reason','未记录原因') for item in selection.get('rejected',[]))
-        reason_rows=[['建池淘汰（公司）',reason,count] for reason,count in rejected.most_common()]
+        rebalances=selection.get('rebalances',[])
+        rejected=Counter(item.get('reason','未记录原因') for item in (selection.get('rejected',[]) if not rebalances else [item for pool in rebalances for item in pool.get('rejected',[])]))
+        reason_rows=[['建池淘汰（公司 / 建池时点）' if rebalances else '建池淘汰（公司）',reason,count] for reason,count in rejected.most_common()]
         reason_rows.extend([stage,r.get('reason'),r.get('count')] for key,stage in (('reasons','筛选未通过（公司 / 时点）'),('skips','执行跳过（事件）')) for r in diagnostics.get(key,[]))
         reasons=table(['阶段','未通过 / 未成交原因','次数'],reason_rows)
         selected=len(selection.get('stocks',[]))
         selection_note=f"建池 {selected} 只 / 目标 {selection.get('target_count',backtest.get('protocol',{}).get('pool_size','—'))} 只；候选 {selection.get('candidate_count','—')} 家，已评估 {selection.get('evaluated_count',selected+len(selection.get('rejected',[])))} 家。" if selection else ''
+        pool_table=''
+        if rebalances:
+            selection_note=f"历年涉及 {selected} 只；每期最多 {selection.get('target_count','—')} 只，共 {len(rebalances)} 次建池。评估总数还包含退出研究池后继续跟踪的公司。"
+            pool_table=table(['建池日','实际入池','候选','未入池候选'],[[pool.get('day'),len(pool.get('symbols',[])),pool.get('candidate_count'),
+                max(0,pool['candidate_count']-len(pool.get('symbols',[]))) if isinstance(pool.get('candidate_count'),int) else None] for pool in rebalances])
+            pool_table+='<p class="muted">未入池候选含条件不满足或排序未选中，不等于财务不合格；年度淘汰原因按公司 / 建池时点计数，同一公司可能重复出现。</p>'
         diagnoses=f'''<details class="research-results" id="research-diagnostics"><summary>建池淘汰、筛选与未成交原因</summary><p>{esc(selection_note)}</p><p>共 {esc(diagnostics.get('evaluations'))} 次公司 / 时点评估。{esc(states)}</p>
-        <p class="muted">建池淘汰按公司计数，筛选按公司 / 时点计数，执行跳过按事件计数，三者不能相加。数据不足、未达到价格要求和资金不够买一手是不同原因；不能为了产生交易把它们视为通过。</p>{reasons}</details>'''
+        {pool_table}<p class="muted">建池淘汰按{'公司 / 建池时点' if rebalances else '公司'}计数，筛选按公司 / 时点计数，执行跳过按事件计数，三者不能相加。数据不足、未达到价格要求和资金不够买一手是不同原因；不能为了产生交易把它们视为通过。</p>{reasons}</details>'''
     limitations=research.get('limitations',[])+backtest.get('limitations',[])
     notes=''.join(f'<li>{esc(note)}</li>' for note in dict.fromkeys(limitations))
     backtest_state=backtest.get('status') or research.get('backtest',{}).get('status') or '待运行'
     backtest_state=EXPERIMENT_STATES.get(backtest_state,backtest_state)
     historical_count=backtest.get('coverage',{}).get('stocks')
-    historical_note=f'历史建池 {historical_count} 只；与当日模拟账户分开记录' if historical_count is not None else '与当日模拟账户分开记录'
+    historical_note=f'历史涉及 {historical_count} 只；与当日模拟账户分开记录' if historical_count is not None else '与当日模拟账户分开记录'
     message=backtest.get('message') or research.get('backtest',{}).get('message') or research.get('message','')
     return f'''<section class="panel research-lab" id="research-lab"><div class="section-title"><h2>策略研究台</h2><span class="pill">手动运行 · 不启用定时任务</span></div>
     <div class="research-summary"><div><small>研究目标</small><strong>年化 ≥ 10%</strong><span>待验证，不是收益承诺</span></div><div><small>股票研究池</small><strong>{len(stocks)} / {esc(research.get('target_count',20))}</strong><span>研究对象，不等于持仓数量</span></div><div><small>历史检验状态</small><strong>{esc(backtest_state)}</strong><span>{esc(historical_note)}</span></div></div>
@@ -200,6 +208,56 @@ def automatic_panel(data):
     <details><summary>查看全部初筛原因与规则</summary>{screening}<pre class="analysis">{esc(json.dumps(data['rules'],ensure_ascii=False,indent=2))}</pre></details></section>'''
 
 
+def historical_chart_data(workspace):
+    latest=optional_report(workspace/'backtests'/'latest.json')
+    if latest.get('status') not in ('diagnostic','complete') or not isinstance(latest.get('protocol'),dict):
+        return {}
+    version=latest.get('protocol',{}).get('version','')
+    if not isinstance(version,str) or not re.fullmatch(r'historical-[a-z0-9]+(?:-[a-z0-9]+)*',version):
+        return {}
+    base=(workspace/'backtests').resolve()
+    folder=(base/version).resolve()
+    if not folder.is_relative_to(base):
+        return {}
+    def record(name):
+        path=folder/name
+        return optional_report(path) if path.resolve().is_relative_to(folder) else {}
+    summary=record('summary.json')
+    if summary.get('protocol',{}).get('version')!=version or summary.get('status') not in ('diagnostic','complete'):
+        return {}
+    coverage=summary.get('coverage',{})
+    if not all(isinstance(coverage.get(key),str) and re.fullmatch(r'\d{8}',coverage[key]) for key in ('start','end')) or coverage['start']>coverage['end']:
+        return {}
+    market=record('market.json')
+    stocks={}
+    try:
+        for code,bars in market.get('bars',{}).items():
+            if not re.fullmatch(r'\d{6}\.(SH|SZ)',code):
+                raise ValueError()
+            candles=[{'day':day,**{key:float(bar[key]) for key in ('open','high','low','close','vol')}} for day,bar in sorted(bars.items())]
+            if any(not re.fullmatch(r'\d{8}',bar['day']) or not all(math.isfinite(bar[key]) for key in ('open','high','low','close','vol')) for bar in candles):
+                raise ValueError()
+            stocks[code]={'candles':candles,'error':None}
+    except (TypeError,ValueError,KeyError,AttributeError):
+        return {}
+    if not stocks:
+        return {}
+    names={s['symbol']:s.get('name',s['symbol']) for s in record('cohort.json').get('stocks',[])}
+    names.update({s['symbol']:s.get('name',s['symbol']) for s in summary.get('selection_audit',{}).get('stocks',[])})
+    runs=[]
+    for rate in ('004','005','006'):
+        label=f'{int(rate)}%股息门槛 · 全期'
+        if not any(run.get('label')==label and run.get('status') in ('diagnostic','complete') for run in summary.get('runs',[])):
+            continue
+        result=record(f'yield-{rate}-result.json')
+        if (result.get('start')!=coverage.get('start') or result.get('end')!=coverage.get('end')
+                or not isinstance(result.get('plans'),list) or not isinstance(result.get('trades'),list)):
+            continue
+        runs.append({'id':rate,'label':f'本次历史 {int(rate)}%'+(' · 主方案' if rate=='005' else ''),
+                     'plans':result['plans'],'fills':result['trades']})
+    return {'version':version,'start':coverage.get('start'),'end':coverage.get('end'),'stocks':stocks,'names':names,'runs':runs} if runs else {}
+
+
 def chart_panel(workspace, report, automatic, research=None):
     chart_path=workspace/'charts.json'
     chart_data=json.loads(chart_path.read_text(encoding='utf-8')) if chart_path.exists() else {}
@@ -216,16 +274,18 @@ def chart_panel(workspace, report, automatic, research=None):
     names.update({r['symbol']:r.get('name',r['symbol']) for r in research_stocks})
     codes=focus
     stocks={code:stocks[code] for code in codes if code in stocks}
-    if not codes:
+    historical=historical_chart_data(workspace) if report.get('source')!='DEMO' else {}
+    if not codes and not historical:
         return ''
     options=''.join(f'<option value="{esc(s)}" {"selected" if s==preferred else ""}>{esc(s+" · "+names.get(s,s))}</option>' for s in codes)
-    payload={'stocks':stocks,'assessments':assessments,'plans':automatic.get('chart_plans',[]),'fills':automatic.get('chart_fills',[]),'notes':automatic.get('notes',{})}
+    sources='<option value="daily">日常模拟</option>'+''.join(f'<option value="{run["id"]}">{esc(run["label"])}</option>' for run in historical.get('runs',[]))
+    payload={'stocks':stocks,'names':names,'as_of':report.get('as_of'),'assessments':assessments,'plans':automatic.get('chart_plans',[]),'fills':automatic.get('chart_fills',[]),'notes':automatic.get('notes',{}),'historical':historical}
     encoded=json.dumps(payload,ensure_ascii=False).replace('<','\\u003c').replace('>','\\u003e').replace('&','\\u0026')
     return f'''<section class="panel" id="chart-panel"><div class="section-title"><h2>股票 K 线与自动模拟操作</h2><span class="muted">红涨绿跌 · 未复权日线</span></div>
-    <div class="filters"><label>股票<select id="chart-symbol">{options}</select></label><label>显示范围<select id="chart-range"><option value="30">近 30 根</option><option value="60" selected>近 60 根</option><option value="120">近 120 根</option><option value="10000">全部已取数据</option></select></label></div>
-    <p class="chart-legend">○ 信：生成订单的信号日　<span class="buy">▲ 买：模拟买入成交</span>　<span class="sell">▼ 卖：模拟卖出成交</span>　虚线：基准情景参考价（在显示范围内时）</p>
+    <div class="filters" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr))"><label>来源<select id="chart-source" style="width:100%;max-width:none">{sources}</select></label><label>股票<select id="chart-symbol">{options}</select></label><label>显示范围<select id="chart-range" style="width:100%;max-width:none"><option value="30">近 30 根</option><option value="60" selected>近 60 根</option><option value="120">近 120 根</option><option value="10000">全部已取数据</option></select></label><label>定位成交<select id="chart-trade" style="width:100%;max-width:none"><option value="">最近行情</option></select></label></div><p class="muted" id="chart-context"></p>
+    <p class="chart-legend">○ 信：生成订单的信号日　<span class="buy">▲ 买：模拟买入成交</span>　<span class="sell">▼ 卖：模拟卖出成交</span><span id="chart-reference-legend">　虚线：基准情景参考价（在显示范围内时）</span></p>
     <div id="stock-chart" class="stock-chart" tabindex="0" aria-label="股票日 K 线；使用左右方向键查看各日详情"></div><p id="chart-tip" class="chart-tip" aria-live="polite"></p>
-    <div id="chart-explanation" class="chart-explanation"></div><p class="muted">行情截至 {esc(report.get('as_of'))}。未复权便于核对成交原价，除权除息可能产生缺口；不把它解释为投资损失。未来有效日的订单不画成成交；尚无成交时没有买卖箭头。图中只标独立自动模拟账本的操作。</p>
+    <div id="chart-explanation" class="chart-explanation"></div><p class="muted">未复权便于核对成交原价，除权除息可能产生缺口；不把它解释为投资损失。图中只标所选来源的订单与成交；尚无成交时没有买卖箭头。历史模式不套用今天的参考价，历史曾入池名单不等于当日观察名单。</p>
     <script type="application/json" id="market-chart-data">{encoded}</script></section>'''
 
 

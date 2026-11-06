@@ -53,12 +53,14 @@ class MarketHistoryTests(unittest.TestCase):
             calls.append((api,params))
             if api=='dividend':
                 return []
-            year=int(params['start_date'][:4])
             # Indicator range means report period; the other financial ranges mean announcement.
-            row={'ts_code':CODE,'ann_date':f'{year}0401','end_date':f'{year-1}1231'}
-            if api=='fina_indicator':
-                row.update(end_date=f'{year}0331',ann_date=f'{year+1}0401')
-            return [{**row,'total_share':n} for n in range(6)]
+            rows=[]
+            for year in range(int(params['start_date'][:4]),int(params['end_date'][:4])+1):
+                row={'ts_code':CODE,'ann_date':f'{year}0401','end_date':f'{year-1}1231'}
+                if api=='fina_indicator':
+                    row.update(end_date=f'{year}0331',ann_date=f'{year+1}0401')
+                rows.extend({**row,'total_share':n} for n in range(6))
+            return rows
         with patch.object(Tushare,'call',side_effect=response):
             result=Tushare().dossier(CODE,'20261106',start_year=2009)
         self.assertEqual(result['errors'],{})
@@ -69,6 +71,18 @@ class MarketHistoryTests(unittest.TestCase):
         self.assertEqual([p for api,p in calls if api=='dividend'],[{'ts_code':CODE}])
         self.assertEqual(result['data']['income'][0]['end_date'],'20081231')
         self.assertEqual(result['data']['fina_indicator'][-1]['ann_date'],'20270401')
+        self.assertEqual(len(calls),1+5*(1+18))
+
+    def test_explicit_history_below_limit_uses_one_batch_per_api(self):
+        row={'ts_code':CODE,'ann_date':'20220401','end_date':'20211231'}
+        with patch.object(Tushare,'call',side_effect=lambda api,params,fields: [] if api=='dividend' else [row]) as call:
+            result=Tushare().dossier(CODE,'20221230',start_year=2017)
+        self.assertEqual(result['errors'],{})
+        self.assertEqual(call.call_count,6)
+        for invocation in call.call_args_list:
+            api,params,_=invocation.args
+            self.assertEqual(params,{'ts_code':CODE} if api=='dividend' else
+                             {'ts_code':CODE,'start_date':'20170101','end_date':'20221230'})
 
     def test_default_financial_start_and_invalid_year(self):
         with patch.object(Tushare,'call',return_value=[]) as call:
@@ -86,6 +100,8 @@ class MarketHistoryTests(unittest.TestCase):
     def test_one_failed_slice_discards_partial_financial_api(self):
         def response(api,params,fields):
             if api=='income':
+                if params['start_date']=='20090101' and params['end_date']=='20101231':
+                    raise PageLimitError('full batch')
                 if params['start_date']=='20100101':
                     raise AppError('test source unavailable')
                 return [{'ts_code':CODE,'ann_date':'20090401','end_date':'20081231'}]
@@ -100,8 +116,9 @@ class MarketHistoryTests(unittest.TestCase):
         def response(api,params,fields):
             return [{'ts_code':CODE,'ann_date':'20260401','end_date':'20251231'}]*100 if api=='balancesheet' else []
         with patch.object(Tushare,'call',side_effect=response):
-            result=Tushare().dossier(CODE,'20261106',start_year=2026)
+            result=Tushare().dossier(CODE,'20261106',start_year=2009)
         self.assertIn('balancesheet',result['errors'])
+        self.assertIn('分年',result['errors']['balancesheet'])
         self.assertEqual(result['data']['balancesheet'],[])
 
     def test_documented_full_pages_fail_before_caching(self):
@@ -131,7 +148,7 @@ class MarketHistoryTests(unittest.TestCase):
                 first=client.dossier(CODE,'20261106')
             self.assertEqual(request.call_count,6)
             with patch('qmt.market.request_json') as request:
-                second=client.dossier(CODE,'20261106')
+                second=client.dossier(CODE,'20261106',start_year=2017)
             request.assert_not_called()
             self.assertEqual(first,second)
 
@@ -164,14 +181,15 @@ class MarketHistoryTests(unittest.TestCase):
         self.assertEqual(result['errors'],{'fina_indicator':'source unavailable'})
 
     def test_other_errors_and_dividend_full_page_never_trigger_yearly_retry(self):
-        with patch.object(Tushare,'call',side_effect=AppError('bad response')),patch.object(Tushare,'yearly') as yearly:
-            result=Tushare().dossier(CODE,'20261106')
-        yearly.assert_not_called()
-        self.assertEqual(len(result['errors']),6)
-        with patch.object(Tushare,'call',side_effect=lambda api,params,fields: [{'ts_code':CODE}]*2000 if api=='dividend' else []),patch.object(Tushare,'yearly') as yearly:
-            result=Tushare().dossier(CODE,'20261106')
-        yearly.assert_not_called()
-        self.assertEqual(list(result['errors']),['dividend'])
+        for kwargs in ({},{'start_year':2009}):
+            with patch.object(Tushare,'call',side_effect=AppError('bad response')),patch.object(Tushare,'yearly') as yearly:
+                result=Tushare().dossier(CODE,'20261106',**kwargs)
+            yearly.assert_not_called()
+            self.assertEqual(len(result['errors']),6)
+            with patch.object(Tushare,'call',side_effect=lambda api,params,fields: [{'ts_code':CODE}]*2000 if api=='dividend' else []),patch.object(Tushare,'yearly') as yearly:
+                result=Tushare().dossier(CODE,'20261106',**kwargs)
+            yearly.assert_not_called()
+            self.assertEqual(list(result['errors']),['dividend'])
 
     def test_malformed_full_page_is_not_a_page_limit_error(self):
         response={'code':0,'data':{'fields':['ts_code'],'items':[[CODE,'unexpected']]*100}}
@@ -179,6 +197,10 @@ class MarketHistoryTests(unittest.TestCase):
             with self.assertRaises(AppError) as caught:
                 Tushare().call('fina_indicator',{'ts_code':CODE},'ts_code')
         self.assertNotIsInstance(caught.exception,PageLimitError)
+        with patch.dict('os.environ',{'TUSHARE_TOKEN':'test'}),patch('qmt.market.request_json',return_value=response),patch('qmt.market.time.sleep'),patch.object(Tushare,'yearly') as yearly:
+            result=Tushare().dossier(CODE,'20261106',start_year=2009)
+        yearly.assert_not_called()
+        self.assertEqual(len(result['errors']),6)
         api,params,fields='fina_indicator',{'ts_code':CODE},'ts_code,ann_date'
         key=hashlib.sha256(json.dumps([api,params,fields],sort_keys=True).encode()).hexdigest()
         with tempfile.TemporaryDirectory() as tmp:
