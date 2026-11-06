@@ -132,6 +132,21 @@ def data_warnings_panel(warnings):
     <p class="muted">该季度股数字段未参与本次数值计算；这里只记录接口差异，尚未核对原文。年报股数及其他字段冲突仍按阻断处理。</p></div>'''
 
 
+def chart_stock_events(events):
+    return [{**event,'source':safe_url(event.get('source'))} for event in (events or [])]
+
+
+def stock_events_panel(events):
+    if not events:
+        return ''
+    rows=[]
+    for event in chart_stock_events(events):
+        source=f' · <a href="{esc(event["source"])}" target="_blank" rel="noreferrer">实施依据</a>' if event['source'] else ' · 来源未记录'
+        rows.append(f'''<li class="analysis">{esc(event.get('symbol'))} · 除权日 {esc(event.get('ex_date'))} · 新增 {esc(event.get('quantity'))} 股<br>
+        登记日 {esc(event.get('record_date'))} 持股 {esc(event.get('record_quantity'))} 股；每登记股新增 {esc(event.get('ratio'))} 股；上市日 {esc(event.get('stock_list_date'))}{source}</li>''')
+    return f'<details class="stock-events"><summary>送转股数流水 · {len(events)} 笔</summary><p class="muted">送转增加股数，不是买入成交；上市日期不等于除权日期。缺失信息显示 —，不由界面推算。</p><ul>'+''.join(rows)+'</ul></details>'
+
+
 def dividend_cash_panel(annual):
     if not annual:
         return ''
@@ -321,7 +336,7 @@ def historical_chart_data(workspace):
                 or not isinstance(result.get('plans'),list) or not isinstance(result.get('trades'),list)):
             continue
         runs.append({'id':rate,'label':f'本次历史 {int(rate)}%'+(' · 主方案' if rate=='005' else ''),
-                     'plans':result['plans'],'fills':result['trades']})
+                     'plans':result['plans'],'fills':result['trades'],'stock_events':chart_stock_events(result.get('stock_events'))})
     return {'version':version,'start':coverage.get('start'),'end':coverage.get('end'),'stocks':stocks,'names':names,'runs':runs} if runs else {}
 
 
@@ -346,13 +361,13 @@ def chart_panel(workspace, report, automatic, research=None):
         return ''
     options=''.join(f'<option value="{esc(s)}" {"selected" if s==preferred else ""}>{esc(s+" · "+names.get(s,s))}</option>' for s in codes)
     sources='<option value="daily">日常模拟</option>'+''.join(f'<option value="{run["id"]}">{esc(run["label"])}</option>' for run in historical.get('runs',[]))
-    payload={'stocks':stocks,'names':names,'as_of':report.get('as_of'),'assessments':assessments,'plans':automatic.get('chart_plans',[]),'fills':automatic.get('chart_fills',[]),'notes':automatic.get('notes',{}),'historical':historical}
+    payload={'stocks':stocks,'names':names,'as_of':report.get('as_of'),'assessments':assessments,'plans':automatic.get('chart_plans',[]),'fills':automatic.get('chart_fills',[]),'stock_events':chart_stock_events(automatic.get('account',{}).get('stock_events')),'notes':automatic.get('notes',{}),'historical':historical}
     encoded=json.dumps(payload,ensure_ascii=False).replace('<','\\u003c').replace('>','\\u003e').replace('&','\\u0026')
     return f'''<section class="panel" id="chart-panel"><div class="section-title"><h2>股票 K 线与自动模拟操作</h2><span class="muted">红涨绿跌 · 未复权日线</span></div>
-    <div class="filters" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr))"><label>来源<select id="chart-source" style="width:100%;max-width:none">{sources}</select></label><label>股票<select id="chart-symbol">{options}</select></label><label>显示范围<select id="chart-range" style="width:100%;max-width:none"><option value="30">近 30 根</option><option value="60" selected>近 60 根</option><option value="120">近 120 根</option><option value="10000">全部已取数据</option></select></label><label>定位成交<select id="chart-trade" style="width:100%;max-width:none"><option value="">最近行情</option></select></label></div><p class="muted" id="chart-context"></p>
-    <p class="chart-legend">○ 信：生成订单的信号日　<span class="buy">▲ 买：模拟买入成交</span>　<span class="sell">▼ 卖：模拟卖出成交</span><span id="chart-reference-legend">　虚线：基准情景参考价（在显示范围内时）</span></p>
+    <div class="filters" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr))"><label>来源<select id="chart-source" style="width:100%;max-width:none">{sources}</select></label><label>股票<select id="chart-symbol">{options}</select></label><label>显示范围<select id="chart-range" style="width:100%;max-width:none"><option value="30">近 30 根</option><option value="60" selected>近 60 根</option><option value="120">近 120 根</option><option value="10000">全部已取数据</option></select></label><label>定位成交 / 送转<select id="chart-trade" style="width:100%;max-width:none"><option value="">最近行情</option></select></label></div><p class="muted" id="chart-context"></p>
+    <p class="chart-legend">○ 信：生成订单的信号日　<span class="buy">▲ 买：模拟买入成交</span>　<span class="sell">▼ 卖：模拟卖出成交</span>　<span style="color:#79549b">■ 转：送转新增股</span><span id="chart-reference-legend">　虚线：基准情景参考价（在显示范围内时）</span></p>
     <div id="stock-chart" class="stock-chart" tabindex="0" aria-label="股票日 K 线；使用左右方向键查看各日详情"></div><p id="chart-tip" class="chart-tip" aria-live="polite"></p>
-    <div id="chart-explanation" class="chart-explanation"></div><p class="muted">未复权便于核对成交原价，除权除息可能产生缺口；不把它解释为投资损失。图中只标所选来源的订单与成交；尚无成交时没有买卖箭头。历史模式不套用今天的参考价，历史曾入池名单不等于当日观察名单。</p>
+    <div id="chart-explanation" class="chart-explanation"></div><p class="muted">未复权便于核对成交原价，除权除息可能产生缺口；不把它解释为投资损失。图中只标所选来源的订单、成交及已记录送转；送转不是买入，不重复调整原始 K 线。尚无成交时没有买卖箭头。历史模式不套用今天的参考价，历史曾入池名单不等于当日观察名单。</p>
     <script type="application/json" id="market-chart-data">{encoded}</script></section>'''
 
 
@@ -418,7 +433,7 @@ def render(workspace, ledger, report, status=None):
         accounts.append(f'''<section class="panel"><div class="section-title"><h2>{title}</h2><span class="pill">{'虚拟资金 · 税前分红' if mode!='manual' else '仅记账 · 不会发单'}</span></div>
         <div class="account-stats"><div><small>账本现金</small><strong>¥ {number(data['cash'])}</strong></div><div><small>最近估值总资产</small><strong>¥ {number(mark.get('equity'))}</strong></div><div><small>待到账分红</small><strong>¥ {number(mark.get('receivable'))}</strong></div><div><small>估值日期</small><strong>{esc(mark.get('day'))}</strong></div></div>
         <p>{holdings}</p><p class="muted">单股上限 ¥{number(data['account']['max_position'])} · 行业上限 ¥{number(data['account']['max_sector'])}。已过有效日期的未核对计划不能继续执行；先核对成交及撤单。</p>
-        <h3>交易计划</h3>{plans}<details><summary>成交与现金流水</summary>{fills}{events}</details></section>''')
+        <h3>交易计划</h3>{plans}<details><summary>成交与现金流水</summary>{fills}{events}{stock_events_panel(data.get('stock_events'))}</details></section>''')
     rows = report.get('rows',[])
     style = (ROOT/'qmt/style.css').read_text(encoding='utf-8')
     chart_script = (ROOT/'qmt/chart.js').read_text(encoding='utf-8')

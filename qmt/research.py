@@ -11,6 +11,26 @@ from .config import ROOT, AppError, date_key, dec
 DISCLOSURES = json.loads((ROOT/'qmt/disclosures.json').read_text(encoding='utf-8'))
 
 
+def stock_distribution_terms(event, as_of):
+    """Return source-verified listing terms only for an exact implementation row."""
+    day=date_key(as_of)
+    matches=[item for item in DISCLOSURES.get('stock_distributions',[])
+             if item['expected']==event and date_key(item['available_on'])<=day]
+    if not matches:
+        return None
+    if len(matches)!=1:
+        raise AppError('送转股实施依据重复，不能选择一个版本入账。')
+    item=matches[0]
+    listed=date_key(item['stock_list_date']); available=date_key(item['available_on'])
+    source=urlparse(item['source']); digest=item.get('source_sha256','')
+    if (not max(date_key(event['ann_date']),date_key(event['imp_ann_date']))<=available<=date_key(event['ex_date'])
+            or not date_key(event['record_date'])<date_key(event['ex_date'])<=listed
+            or dec(event['stk_div'])<=0 or source.scheme!='https' or not source.hostname
+            or len(digest)!=64 or any(c not in '0123456789abcdef' for c in digest)):
+        raise AppError('送转股上市日、比例或公告依据无效，暂停入账。')
+    return {'stock_list_date':listed,'source':item['source'],'available_on':available}
+
+
 def disclosed_date(row):
     dates = [row[key] for key in ("ann_date", "f_ann_date") if row.get(key)]
     return max(date_key(day) for day in dates) if dates else "99999999"

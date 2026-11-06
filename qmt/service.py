@@ -5,7 +5,7 @@ from pathlib import Path
 
 from .config import AppError, atomic_json, now_cn, dec
 from .market import Tushare
-from .research import summarize, evaluate_review, implemented_dividends
+from .research import summarize, evaluate_review, implemented_dividends, stock_distribution_terms
 from .selection import load_rules, select_universe
 
 
@@ -82,14 +82,14 @@ def update_ledger(workspace, ledger, report):
         for event in items:
             if (event.get('pay_date') or event['ex_date'])>ledger.account('paper')['start_date'] and event["ex_date"]<=day and dec(event["stk_div"])!=0 and (
                     ledger.positions("paper",event["record_date"]).get(symbol,0) or
-                    any(p["symbol"]==symbol and p["execute_date"]<=event["record_date"] for p in pending)):
+                    any(p["symbol"]==symbol and p["execute_date"]<=event["record_date"] for p in pending)) and stock_distribution_terms(event,day) is None:
                 raise AppError("持仓/计划涉及送转股，需处理股本变动后再继续模拟。")
     bars = {}
     for symbol in {p["symbol"] for p in pending}:
         start = min(p["execute_date"] for p in pending if p["symbol"]==symbol)
         bars[symbol] = client.bars(symbol,start,day)
     # Settle chronologically so a later cash dividend cannot fund an earlier purchase.
-    dates = sorted({p["execute_date"] for p in pending} | {e["pay_date"] for v in events.values() for e in v if e.get("pay_date") and e["pay_date"]<=day} | {day})
+    dates = sorted({p["execute_date"] for p in pending} | {e[key] for v in events.values() for e in v for key in ('ex_date','pay_date') if e.get(key) and e[key]<=day} | {day})
     for date in dates:
         ledger.dividends(events,date)
         ledger.settle_paper(date,bars)

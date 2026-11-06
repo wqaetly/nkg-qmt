@@ -1,4 +1,5 @@
 import json
+import re
 import shutil
 import subprocess
 import tempfile
@@ -6,7 +7,7 @@ import unittest
 from pathlib import Path
 
 from qmt.config import ROOT
-from qmt.report import chart_panel, historical_chart_data, research_panel
+from qmt.report import chart_panel, historical_chart_data, research_panel, stock_events_panel
 
 
 class HistoricalChartUiTests(unittest.TestCase):
@@ -74,6 +75,41 @@ class HistoricalChartUiTests(unittest.TestCase):
             (folder/'market.json').write_text(json.dumps({'bars':{'600000.SH':{'20250731':{'open':'nan'}}}}),encoding='utf-8')
             self.assertEqual(historical_chart_data(workspace),{})
 
+    def test_stock_events_keep_raw_prices_and_source_isolation_with_legacy_fallback(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace=Path(tmp)
+            folder,_,result=self.fixture(workspace)
+            event={'mode':'paper','reference':'stock-1','symbol':'600000.SH','record_date':'20250801',
+                   'ex_date':'20250804','stock_list_date':'20250805','record_quantity':500,'ratio':'0.3',
+                   'quantity':150,'source':'https://example.com/notice.pdf'}
+            (folder/'yield-004-result.json').write_text(json.dumps({**result,'stock_events':[event]}),encoding='utf-8')
+            raw_before=(folder/'market.json').read_bytes()
+            history=historical_chart_data(workspace)
+            self.assertEqual(history['runs'][0]['stock_events'],[event])
+            self.assertEqual(history['runs'][1]['stock_events'],[])
+            self.assertEqual(history['stocks']['600000.SH']['candles'][-1]['close'],8.2)
+            self.assertEqual((folder/'market.json').read_bytes(),raw_before)
+            daily={**event,'quantity':30,'source':'javascript:alert(1)','reference':'</script><img src=x onerror=alert(1)>'}
+            page=chart_panel(workspace,{'as_of':'20250804','source':'Tushare','rows':[]},
+                             {'focus_symbols':[],'account':{'stock_events':[daily]}})
+            payload=json.loads(re.search(r'id="market-chart-data">(.*?)</script>',page,re.S)[1])
+            self.assertEqual(payload['stock_events'],[{**daily,'source':''}])
+            self.assertEqual(payload['historical']['runs'][0]['stock_events'],[event])
+            self.assertNotIn('</script><img',page)
+            self.assertNotIn('javascript:',page)
+            self.assertIn('送转不是买入，不重复调整原始 K 线',page)
+            flow=stock_events_panel([event,{**daily,'record_date':None,'stock_list_date':None,'symbol':'<script>x</script>'}])
+            self.assertIn('<details class="stock-events">',flow)
+            self.assertNotIn(' open',flow)
+            self.assertIn('新增 150 股',flow)
+            self.assertIn('每登记股新增 0.3 股',flow)
+            self.assertIn('https://example.com/notice.pdf',flow)
+            self.assertIn('上市日 —',flow)
+            self.assertIn('&lt;script&gt;x&lt;/script&gt;',flow)
+            self.assertNotIn('javascript:',flow)
+            self.assertEqual(stock_events_panel(None),'')
+            self.assertEqual(stock_events_panel([]),'')
+
     def test_annual_cohort_counts_show_union_separately_from_each_year_cap(self):
         audit={'stocks':[{'symbol':str(i)} for i in range(25)],'target_count':20,'rebalances':[
             {'day':'20201231','symbols':list(range(20)),'candidate_count':30,'rejected':[{'reason':'财务待核实'}]},
@@ -110,14 +146,20 @@ option(nodes['chart-source'],'daily');option(nodes['chart-source'],'004');option
 const candles=Array.from({length:160},(_,index)=>{const date=new Date(Date.UTC(2025,0,1+index));return {day:date.toISOString().slice(0,10).replaceAll('-',''),open:8,high:9,low:7,close:8.2,vol:100};});
 const fill={symbol:'600000.SH',side:'buy',quantity:500,price:'8.18',fee:'5',trade_date:candles[20].day,plan_id:1};
 const plan={symbol:'600000.SH',side:'buy',quantity:500,limit_price:'8.2',id:1,signal_date:candles[19].day,execute_date:candles[20].day,status:'filled',note:'回放'};
+const stockEvent={symbol:'600000.SH',record_date:candles[20].day,ex_date:candles[21].day,stock_list_date:candles[22].day,record_quantity:500,ratio:'0.3',quantity:150,source:'https://example.com/notice.pdf'};
+const dailyEvent={...stockEvent,ex_date:candles[150].day,record_quantity:100,quantity:30,stock_list_date:null,source:''};
 const stocks={'600000.SH':{candles}},names={'600000.SH':'测试公司'};
-nodes['market-chart-data'].textContent=JSON.stringify({stocks,names,as_of:'20250609',assessments:[{symbol:'600000.SH',reference_price:8,state:'等待价格',reason:'日常原因'}],plans:[],fills:[],notes:{},historical:{version:'historical-v9',start:candles[0].day,end:candles.at(-1).day,stocks,names,runs:[{id:'004',label:'历史4%',plans:[plan],fills:[fill]},{id:'005',label:'历史5%',plans:[],fills:[]}]}});
+nodes['market-chart-data'].textContent=JSON.stringify({stocks,names,as_of:'20250609',assessments:[{symbol:'600000.SH',reference_price:8,state:'等待价格',reason:'日常原因'}],plans:[],fills:[],stock_events:[dailyEvent],notes:{},historical:{version:'historical-v9',start:candles[0].day,end:candles.at(-1).day,stocks,names,runs:[{id:'004',label:'历史4%',plans:[plan],fills:[fill],stock_events:[stockEvent]},{id:'005',label:'历史5%',plans:[],fills:[]}]}});
 const button=new Node('button');button.dataset={chartSymbol:'600000.SH'};
 vm.runInNewContext(fs.readFileSync(process.argv[1],'utf8'),{requestAnimationFrame:fn=>fn(),window:{addEventListener:(event,handler)=>windowHandlers[event]=handler},document:{getElementById:id=>nodes[id],querySelectorAll:()=>[button],createElement:tag=>new Node(tag),createElementNS:(_,tag)=>new Node(tag)}});
 const elements=()=>nodes['stock-chart'].children[0].children;
 assert(elements().some(node=>node.attrs['data-kind']==='reference'));assert.equal(nodes['chart-source'].value,'daily');
+assert.equal(elements().find(node=>node.attrs['data-kind']==='stock-event').attrs['data-quantity'],'30');
+nodes['chart-trade'].value='stock:0';nodes['chart-trade'].handlers.change();
+assert.match(nodes['chart-tip'].textContent,/送转新增 30 股.*上市日 —/);
+assert(!elements().some(node=>node.attrs['data-kind']==='fill'),'A stock distribution is not a buy fill');
 nodes['chart-source'].value='004';nodes['chart-source'].handlers.change();
-assert.equal(nodes['chart-trade'].children.length,2);assert.equal(nodes['chart-trade'].disabled,false);
+assert.equal(nodes['chart-trade'].children.length,3);assert.equal(nodes['chart-trade'].disabled,false);
 assert(!elements().some(node=>node.attrs['data-kind']==='reference'));
 assert(!elements().some(node=>node.attrs['data-kind']==='fill'),'Old trade should be outside latest 60 bars');
 nodes['chart-trade'].value='0';nodes['chart-trade'].handlers.change();
@@ -130,9 +172,26 @@ const markerX=Number(elements().find(node=>node.attrs['data-kind']==='fill').att
 assert(markerX>=nodes['stock-chart'].scrollLeft&&markerX<=nodes['stock-chart'].scrollLeft+nodes['stock-chart'].clientWidth,'Resizing must keep the selected old fill in the viewport');
 assert.notEqual(nodes['stock-chart'].scrollLeft,nodes['stock-chart'].scrollWidth-nodes['stock-chart'].clientWidth,'Resizing must not always scroll to the latest candles');
 assert.match(nodes['chart-tip'].textContent,/模拟买 500 股 @ 8.18/);
+nodes['chart-trade'].value='stock:0';nodes['chart-trade'].handlers.change();
+const stockMarker=elements().find(node=>node.attrs['data-kind']==='stock-event');
+assert.equal(stockMarker.attrs['data-day'],stockEvent.ex_date);assert.equal(stockMarker.attrs['data-quantity'],'150');
+assert.match(stockMarker.children[0].textContent,/登记日 2025-01-21 持股 500 股，每登记股新增 0.3 股；上市日 2025-01-23/);
+assert.match(nodes['chart-tip'].textContent,/收 8.20.*送转新增 150 股/,'Stock distributions must not adjust raw candle prices');
+const flow=nodes['chart-explanation'].children.find(node=>node.tag==='details');
+assert.equal(flow.attrs.open,undefined);assert.equal(flow.open,undefined);
+assert.equal(flow.children[2].children[0].children[0].href,stockEvent.source);
+nodes['stock-chart'].onkeydown({key:'ArrowLeft',preventDefault(){}});
+assert.match(nodes['chart-tip'].textContent,/模拟买 500 股/);assert(!nodes['chart-tip'].textContent.includes('送转新增'));
+nodes['stock-chart'].onkeydown({key:'ArrowRight',preventDefault(){}});
+assert.match(nodes['chart-tip'].textContent,/送转新增 150 股/);
+windowHandlers.resize();
+const stockX=Number(elements().find(node=>node.attrs['data-kind']==='stock-event').attrs.x)+5;
+assert(stockX>=nodes['stock-chart'].scrollLeft&&stockX<=nodes['stock-chart'].scrollLeft+nodes['stock-chart'].clientWidth);
 nodes['chart-source'].value='005';nodes['chart-source'].handlers.change();
 assert.equal(nodes['chart-trade'].disabled,true);assert(!elements().some(node=>node.attrs['data-kind']==='fill'));
+assert(!elements().some(node=>node.attrs['data-kind']==='stock-event'));assert(!nodes['chart-explanation'].children.some(node=>node.tag==='details'));
 button.handlers.click();assert.equal(nodes['chart-source'].value,'daily');assert(elements().some(node=>node.attrs['data-kind']==='reference'));
+assert.equal(elements().find(node=>node.attrs['data-kind']==='stock-event').attrs['data-quantity'],'30');
 '''
         subprocess.run(['node','-e',script,str(ROOT/'qmt/chart.js')],check=True,capture_output=True,text=True)
 

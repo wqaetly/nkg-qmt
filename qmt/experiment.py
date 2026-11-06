@@ -16,24 +16,24 @@ from .service import read_json
 from .industry import industry_at, load_industry_history
 
 
-EXPERIMENT = {'version':'historical-dividend-v18','selection_day':'20221230','development_end':'20241231',
+EXPERIMENT = {'version':'historical-dividend-v19','selection_day':'20221230','development_end':'20241231',
               'validation_start':'20250101','pool_size':20,'entry_yields':['0.04','0.05','0.06'],
               'primary_entry_yield':'0.05','target_cagr':'0.10','benchmark':'515180.SH','earnings_basis':'conservative_minimum'}
-LONG_EXPERIMENT = {**EXPERIMENT,'version':'historical-dividend-v18-long','selection_day':'20141231',
+LONG_EXPERIMENT = {**EXPERIMENT,'version':'historical-dividend-v19-long','selection_day':'20141231',
                    'development_end':'20191231','validation_start':'20200101','benchmark':'510880.SH'}
-QUALITY_EXPERIMENT = {**EXPERIMENT,'version':'historical-dividend-v18-quality','quality_first':True}
-QUALITY_LONG_EXPERIMENT = {**LONG_EXPERIMENT,'version':'historical-dividend-v18-quality-long','quality_first':True}
-ANNUAL_EXPERIMENT = {**QUALITY_EXPERIMENT,'version':'historical-dividend-v18-annual','pool_refresh':'year_end',
+QUALITY_EXPERIMENT = {**EXPERIMENT,'version':'historical-dividend-v19-quality','quality_first':True}
+QUALITY_LONG_EXPERIMENT = {**LONG_EXPERIMENT,'version':'historical-dividend-v19-quality-long','quality_first':True}
+ANNUAL_EXPERIMENT = {**QUALITY_EXPERIMENT,'version':'historical-dividend-v19-annual','pool_refresh':'year_end',
     'pool_exit':'退出名单的资料待核实持仓继续冻结跟踪；其他退出名单股票按下一交易日限价退出。行业沿用首次归属，变更冻结。',
     'monthly_targets':'沿用原回放月末重配：除冻结持仓外，仅当月仍满足全部买入条件者保留目标；不宣称只在3%股息率以下退出。'}
-ANNUAL_LONG_EXPERIMENT = {**ANNUAL_EXPERIMENT,'version':'historical-dividend-v18-annual-long',
+ANNUAL_LONG_EXPERIMENT = {**ANNUAL_EXPERIMENT,'version':'historical-dividend-v19-annual-long',
     'selection_day':LONG_EXPERIMENT['selection_day'],'development_end':LONG_EXPERIMENT['development_end'],
     'validation_start':LONG_EXPERIMENT['validation_start'],'benchmark':LONG_EXPERIMENT['benchmark']}
 
 
-HOLD_EXPERIMENT = {**ANNUAL_EXPERIMENT,'version':'historical-dividend-v18-annual-hold','retention_yield':'0.03',
+HOLD_EXPERIMENT = {**ANNUAL_EXPERIMENT,'version':'historical-dividend-v19-annual-hold','retention_yield':'0.03',
     'monthly_targets':'月末检查：当期成员财务已核实、流动性通过且当日情景股息率至少3%可保留；估值及历史股息入场条件不单独触发卖出。仅持有资格不允许加仓；仍满足完整入场条件者沿用原重配。保留股先占额度，按原月度单股预算与行业额度整手修剪，资料待核实仍冻结；不是每日风险退出。'}
-HOLD_LONG_EXPERIMENT = {**ANNUAL_LONG_EXPERIMENT,'version':'historical-dividend-v18-annual-long-hold',
+HOLD_LONG_EXPERIMENT = {**ANNUAL_LONG_EXPERIMENT,'version':'historical-dividend-v19-annual-long-hold',
                        'retention_yield':HOLD_EXPERIMENT['retention_yield'],'monthly_targets':HOLD_EXPERIMENT['monthly_targets']}
 
 
@@ -424,7 +424,7 @@ def run_experiment(workspace, end, cfg, progress=print, experiment=EXPERIMENT):
                        '行业使用申万一级历史纳入/剔除区间，缺失/冲突不取当前标签；入池后行业变更会冻结交易，供应商历史分类修订仍需原始存档验证。',
                        f"本次运行前登记开发段截至{experiment['development_end']}、留出段自{experiment['validation_start']}；全部4%/5%/6%结果公开。此前已查看过部分历史结果，此留出段不是真正未见数据；年度和滚动统计切分同一账户曲线，没有逐窗训练参数，不是真正独立盲测。",
                        experiment.get('monthly_targets','月末重新分配目标；除资料待核实的冻结持仓外，不再满足买入条件会退出。这不是仅在预测股息率低于3%才卖出的持有策略。'),
-                       '当前为税前现金分红与保守费用；送转股或持仓估值缺失会阻断，不删除异常股票来美化收益。']}
+                       '当前为税前现金及股份分派与保守费用；仅入账公告已核实且新增股数为整数的送转，未核实/零碎股或持仓估值缺失会阻断，不删除异常股票来美化收益。']}
     atomic_json(path/'summary.json',output)
     atomic_json(workspace/'backtests'/'latest.json',output)
     return output

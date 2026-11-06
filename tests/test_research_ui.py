@@ -3,6 +3,7 @@ import shutil
 import subprocess
 import tempfile
 import unittest
+from unittest.mock import patch
 from pathlib import Path
 
 from qmt.config import ROOT, load_config
@@ -46,6 +47,27 @@ class ResearchUiTests(unittest.TestCase):
         old=automatic_panel(data)
         self.assertIn('初始虚拟本金 ¥10,000.00',old)
         self.assertIn('持股上限 5 只',old)
+
+    def test_render_includes_real_summary_stock_flow_inside_existing_ledger_fold(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace=Path(tmp);cfg=load_config();create_demo(workspace,cfg)
+            report=json.loads((workspace/'screen.json').read_text(encoding='utf-8'))
+            ledger=Ledger(workspace/'ledger.sqlite3',cfg)
+            original_summary=ledger.summary
+            event={'symbol':'600001.SH','record_date':'20261103','ex_date':'20261104',
+                   'stock_list_date':'20261105','record_quantity':100,'quantity':30,'ratio':'0.3',
+                   'source':'https://example.com/distribution.pdf'}
+            try:
+                with patch.object(ledger,'summary',side_effect=lambda mode:{**original_summary(mode),'stock_events':[event]}):
+                    page=render(workspace,ledger,report).read_text(encoding='utf-8')
+                self.assertIn('<summary>成交与现金流水</summary>',page)
+                self.assertIn('<details class="stock-events"><summary>送转股数流水 · 1 笔',page)
+                self.assertIn('除权日 20261104 · 新增 30 股',page)
+                self.assertIn('登记日 20261103 持股 100 股',page)
+                self.assertIn('上市日 20261105',page)
+                self.assertIn('href="https://example.com/distribution.pdf"',page)
+            finally:
+                ledger.close()
 
     def test_history_preserves_blocked_versions_and_uses_primary_metrics_in_this_workspace(self):
         with tempfile.TemporaryDirectory() as tmp:

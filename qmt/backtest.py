@@ -7,7 +7,7 @@ from bisect import bisect_right
 from statistics import median
 
 from .config import AppError, date_key, dec, money, symbol_key
-from .ledger import Ledger
+from .ledger import Ledger, rebalance_quantity
 
 
 def metrics(curve, trades, initial_cash):
@@ -198,7 +198,7 @@ def simulate(data, signals, cfg, initial_cash=None, max_holdings=5):
     Retain-only held shares keep at most their current quantity within the same monthly
     target budgets. Candidates still rebalance normally; no daily price-driven trimming.
     An empty list exits; absent snapshots keep positions. Signals at the last session
-    cannot fill. Missing bars for a held/ordered stock and held splits halt.
+    cannot fill. Missing bars and unverified or fractional held distributions halt.
     """
     initial_cash=cfg['paper_cash'] if initial_cash is None else initial_cash
     sessions,bars,dividends,snapshots = _inputs(data,signals,max_holdings)
@@ -267,7 +267,7 @@ def simulate(data, signals, cfg, initial_cash=None, max_holdings=5):
                 sector_values[sector] = sector_values.get(sector,Decimal(0))+price*quantity
             for side in ('sell','buy'):
                 for code in sorted(set(held)|set(targets)):
-                    difference = targets.get(code,0)-held.get(code,0)
+                    difference = rebalance_quantity(held.get(code,0),targets.get(code,0))
                     quantity = difference if side=='buy' else -difference
                     if quantity<=0:
                         continue
@@ -301,6 +301,7 @@ def simulate(data, signals, cfg, initial_cash=None, max_holdings=5):
         return {'start':sessions[0],'end':sessions[-1],'initial_cash':str(money(initial_cash)),
                 'equity_curve':curve,'trades':trades,'plans':plans,'skipped':skipped,
                 'cash_events':[dict(r) for r in ledger.db.execute('SELECT * FROM cash_events ORDER BY day')],
+                'stock_events':[dict(r) for r in ledger.db.execute('SELECT * FROM stock_events ORDER BY ex_date,reference')],
                 'metrics':metrics(curve,trades,initial_cash),
                 'assumptions':{'max_holdings':max_holdings,'max_position':cfg['paper_max_position'],
                                'max_sector':cfg['paper_max_sector'],'cash_reserve':'0.10','fee_config':fee_cfg,

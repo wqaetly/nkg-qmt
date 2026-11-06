@@ -9,15 +9,18 @@
   const tip = document.getElementById('chart-tip'), explanation = document.getElementById('chart-explanation');
   const ns = 'http://www.w3.org/2000/svg';
   const fmt = n => Number(n).toFixed(2);
-  const labelDate = d => `${d.slice(0,4)}-${d.slice(4,6)}-${d.slice(6)}`;
+  const labelDate = d => d ? `${d.slice(0,4)}-${d.slice(4,6)}-${d.slice(6)}` : '—';
+  const stockEventText = e => `送转新增 ${e.quantity ?? '—'} 股；登记日 ${labelDate(e.record_date)} 持股 ${e.record_quantity ?? '—'} 股，每登记股新增 ${e.ratio ?? '—'} 股；上市日 ${labelDate(e.stock_list_date)}`;
   function option(value, text, parent) {
     const item = document.createElement('option'); item.value=value; item.textContent=text; parent.appendChild(item);
   }
   function tradeOptions() {
     trade.replaceChildren(); option('','最近行情',trade);
     const fills=data.fills.filter(fill=>fill.symbol===select.value);
+    const events=(data.stock_events||[]).filter(event=>event.symbol===select.value);
     fills.forEach((fill,index)=>option(String(index),`${labelDate(fill.trade_date)} ${fill.side==='buy'?'买':'卖'} ${fill.quantity}股 @ ${fill.price}`,trade));
-    trade.disabled=!fills.length; trade.value='';
+    events.forEach((event,index)=>option(`stock:${index}`,`${labelDate(event.ex_date)} 送转 +${event.quantity ?? '—'}股`,trade));
+    trade.disabled=!fills.length&&!events.length; trade.value='';
   }
   function changeSource(requested) {
     const run=history.runs?.find(item=>item.id===source.value);
@@ -41,17 +44,33 @@
     const all = stock.candles || [], count=Number(range.value);
     const assessment = data.assessments.find(a => a.symbol === code);
     const plans = data.plans.filter(p => p.symbol === code), fills = data.fills.filter(f => f.symbol === code);
-    const target=trade.value===''?null:fills[Number(trade.value)];
-    const targetIndex=target?all.findIndex(bar=>bar.day===target.trade_date):-1;
+    const stockEvents=(data.stock_events||[]).filter(event=>event.symbol===code);
+    const target=trade.value===''?null:trade.value.startsWith('stock:')?stockEvents[Number(trade.value.slice(6))]:fills[Number(trade.value)];
+    const targetIndex=target?all.findIndex(bar=>bar.day===(target.trade_date||target.ex_date)):-1;
     const first=targetIndex>=0?Math.max(0,Math.min(all.length-count,targetIndex-Math.floor(count/2))):Math.max(0,all.length-count);
     const bars=all.slice(first,first+count);
     host.replaceChildren(); host.onkeydown=null; tip.textContent = ''; explanation.replaceChildren();
     const note = document.createElement('p');
-    note.textContent = historical ? `历史回放记录 · 本股票 ${plans.length} 笔订单、${fills.length} 笔成交；切换定位成交可查看当时 K 线。` : assessment ? `${assessment.state}：${assessment.reason}。${data.notes[code] || ''}` : '无自动策略评估记录';
+    note.textContent = historical ? `历史回放记录 · 本股票 ${plans.length} 笔订单、${fills.length} 笔成交、${stockEvents.length} 笔送转；切换定位成交 / 送转可查看当时 K 线。` : assessment ? `${assessment.state}：${assessment.reason}。${data.notes[code] || ''}` : '无自动策略评估记录';
+    if(target&&targetIndex<0) note.textContent+=' 所选操作日不在已取 K 线范围内，未补造行情。';
     explanation.appendChild(note);
     const orders = document.createElement('p');
     orders.textContent = plans.length ? plans.slice(-8).map(p => `#${p.id} ${p.side==='buy'?'买入':'卖出'} ${p.quantity} 股，限价 ${p.limit_price}，有效日 ${labelDate(p.execute_date)}，${({pending:'待模拟成交',partial:'部分成交',filled:'已模拟成交',expired:'失效未成交',closed:'已关闭'})[p.status] || p.status}`).join('；') : '该股票在所选来源尚无订单；图中不补画交易。';
     explanation.appendChild(orders);
+    if(stockEvents.length) {
+      const details=document.createElement('details'); details.className='stock-events';
+      const summary=document.createElement('summary'); summary.textContent=`送转股数流水 · ${stockEvents.length} 笔`; details.appendChild(summary);
+      const note=document.createElement('p'); note.textContent='送转增加股数，不是买入成交；上市日期不等于除权日期。缺失信息显示 —，不由界面推算。'; details.appendChild(note);
+      const list=document.createElement('ul');
+      stockEvents.forEach(event=>{
+        const item=document.createElement('li'); item.className='analysis'; item.textContent=`除权日 ${labelDate(event.ex_date)} · ${stockEventText(event)}。`;
+        if(event.source) {
+          const link=document.createElement('a'); link.href=event.source; link.target='_blank'; link.rel='noreferrer'; link.textContent=' 实施依据'; item.appendChild(link);
+        } else item.textContent+=' 来源未记录。';
+        list.appendChild(item);
+      });
+      details.appendChild(list); explanation.appendChild(details);
+    }
     if (stock.error || !bars.length) { host.textContent = stock.error || '尚未获取该股票 K 线。'; return; }
     const width = 1080, height = 440, left = 62, right = 1000, top = 32, bottom = 305, volTop = 339, volBottom = 401;
     const visibleDays = new Set(bars.map(b => b.day));
@@ -98,12 +117,19 @@
       el('title',{},marker,`${labelDate(f.trade_date)} 模拟${buy?'买入':'卖出'} ${f.quantity} 股 @ ${f.price}，费用 ${f.fee}；计划 #${f.plan_id}`);
       el('text',{x:xx+9,y:yy+(buy?14:-8),fill:buy?'#b23c32':'#157969','font-size':11},svg,`${buy?'买':'卖'} ${f.price}`);
     });
+    stockEvents.filter(event=>visibleDays.has(event.ex_date)).forEach(event=>{
+      const i=bars.findIndex(b=>b.day===event.ex_date), xx=x(i), yy=y(bars[i].low)+18;
+      const marker=el('rect',{x:xx-5,y:yy-5,width:10,height:10,fill:'#79549b',stroke:'#fff','stroke-width':1,'data-kind':'stock-event','data-day':event.ex_date,'data-quantity':event.quantity},svg);
+      el('title',{},marker,`除权日 ${labelDate(event.ex_date)} · ${stockEventText(event)}`);
+      el('text',{x:xx+9,y:yy+4,fill:'#79549b','font-size':11},svg,`转 +${event.quantity ?? '—'}`);
+    });
     const cross = el('line',{x1:0,x2:0,y1:top,y2:volBottom,stroke:'#587867','stroke-dasharray':'4 3',visibility:'hidden'},svg);
     const describe=i=>{
       const b=bars[i]; cross.setAttribute('x1',x(i));cross.setAttribute('x2',x(i));cross.setAttribute('visibility','visible');
       const trades=fills.filter(f=>f.trade_date===b.day).map(f=>`模拟${f.side==='buy'?'买':'卖'} ${f.quantity} 股 @ ${f.price}`).join('；');
       const signals=plans.filter(p=>p.signal_date===b.day).map(p=>`信号 #${p.id} ${p.side==='buy'?'买':'卖'} ${p.quantity} 股，限价 ${p.limit_price}，仅 ${labelDate(p.execute_date)} 有效`).join('；');
-      tip.textContent=`${labelDate(b.day)}　开 ${fmt(b.open)}　高 ${fmt(b.high)}　低 ${fmt(b.low)}　收 ${fmt(b.close)}　量 ${b.vol.toLocaleString()} 手${signals?' ｜ '+signals:''}${trades?' ｜ '+trades:''}`;
+      const events=stockEvents.filter(event=>event.ex_date===b.day).map(stockEventText).join('；');
+      tip.textContent=`${labelDate(b.day)}　开 ${fmt(b.open)}　高 ${fmt(b.high)}　低 ${fmt(b.low)}　收 ${fmt(b.close)}　量 ${b.vol.toLocaleString()} 手${signals?' ｜ '+signals:''}${trades?' ｜ '+trades:''}${events?' ｜ '+events:''}`;
     };
     let index=targetIndex>=0?targetIndex-first:bars.length-1; describe(index);
     requestAnimationFrame(()=>{host.scrollLeft=targetIndex>=0?Math.max(0,x(index)/width*host.scrollWidth-host.clientWidth/2):host.scrollWidth-host.clientWidth;});

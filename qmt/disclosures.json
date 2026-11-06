@@ -194,5 +194,47 @@
       "pages": "24、40",
       "note": "方大特钢2020年报确认2019年度现金派息为零、每股转增0.49股；新增股上市日2020-04-10。登记及除权日保留接口原值，现金付款日不适用。此项证据仅从该年报披露日起生效。"
     }
+  ],
+  "stock_distributions": [
+    {
+      "expected": {
+        "ts_code": "600123.SH",
+        "end_date": "20221231",
+        "ann_date": "20230527",
+        "div_proc": "实施",
+        "cash_div_tax": 1.0,
+        "stk_div": 0.3,
+        "record_date": "20230616",
+        "ex_date": "20230619",
+        "pay_date": "20230619",
+        "imp_ann_date": "20230613"
+      },
+      "available_on": "20230613",
+      "stock_list_date": "20230619",
+      "source": "https://static.cninfo.com.cn/finalpage/2023-06-13/1217041985.PDF",
+      "source_sha256": "6f7590dd5771a585e50f31d12ffcd010c5a405c81a0842d09926cbed25a0443c",
+      "pages": "1—3",
+      "note": "利润送红股；每股现金1元、送股0.3；新增股份除权日上市；账户级非整数分配未核实。"
+    },
+    {
+      "expected": {
+        "ts_code": "600295.SH",
+        "end_date": "20221231",
+        "ann_date": "20230519",
+        "div_proc": "实施",
+        "cash_div_tax": 1.0,
+        "stk_div": 0.4,
+        "record_date": "20230629",
+        "ex_date": "20230630",
+        "pay_date": "20230630",
+        "imp_ann_date": "20230621"
+      },
+      "available_on": "20230621",
+      "stock_list_date": "20230630",
+      "source": "https://static.cninfo.com.cn/finalpage/2023-06-21/1217107289.PDF",
+      "source_sha256": "225cd830ec94199bfa7937be63a0edc609e9330bbdff093b6037501a8e0f5360",
+      "pages": "1—2",
+      "note": "A股每股现金1元、发行溢价形成公积金转增0.4；新增股份除权日上市；不能用B股登记日替代。"
+    }
   ]
 }

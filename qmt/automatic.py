@@ -6,7 +6,7 @@ from pathlib import Path
 from statistics import median
 
 from .config import AppError, atomic_json, dec, date_key, now_cn
-from .ledger import Ledger
+from .ledger import Ledger, rebalance_quantity
 from .market import Tushare
 from .research import statements, signed, implemented_dividends, annual_dividend_cash
 from .service import read_json, update_ledger
@@ -189,7 +189,8 @@ def plan_day(ledger, report, assessments, rules):
     for side in ('sell','buy'):
         for code in sorted(set(held)|set(target['targets'])):
             actual, desired = held.get(code,0),target['targets'].get(code,0)
-            qty = actual-desired if side=='sell' else desired-actual
+            difference = rebalance_quantity(actual,desired)
+            qty = -difference if side=='sell' else difference
             if qty<=0:
                 continue
             if ledger.db.execute('SELECT 1 FROM plans WHERE mode=? AND symbol=? AND signal_date=?',('paper',code,day)).fetchone():
