@@ -21,6 +21,9 @@ def parser():
     daily.add_argument('--limit',type=int,help='仅用于调试的覆盖数量；默认完整筛选后的研究批次')
     daily.add_argument('--refresh',action='store_true',help='忽略当天缓存重新取数')
     sub.add_parser('report',help='根据已有数据重新生成本地报告')
+    lab=sub.add_parser('lab',help='冻结二十只研究名单并更新K线，不运行定时任务或新增订单')
+    lab.add_argument('--enrich',action='store_true',help='使用已配置搜索和AI补充公开资料草稿')
+    sub.add_parser('backtest',help='独立历史二十股研究池与含费用回放，不更改模拟账本')
     research = sub.add_parser('research',help='搜索公开资料并由已配置的 AI 生成研究草稿')
     research.add_argument('symbol',type=symbol_key)
     review = sub.add_parser('review-template',help='生成待人工核查的三情景模板，不覆盖已有模板')
@@ -116,6 +119,12 @@ def run(args):
                 message=f"仅完成 {report['covered']}/{report['pool_size']} 家调试研究；未运行自动模拟。"
             status={'ok':True,'message':message,'at':now_cn().isoformat()}
             atomic_json(status_path,status)
+        elif args.command=='backtest':
+            from .experiment import run_experiment
+            run_experiment(workspace,report['as_of'],cfg)
+        elif args.command=='lab':
+            from .lab import run_lab
+            run_lab(workspace,report,args.enrich)
         elif args.command=='research':
             row = selected(report,args.symbol)
             result = research_context(row)

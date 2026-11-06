@@ -1,10 +1,14 @@
 import html
 import json
+import math
 from pathlib import Path
 
 from .config import ROOT, now_cn
 from .context import safe_url
 from .selection import automatic_path
+
+
+EXPERIMENT_STATES={'diagnostic':'仅诊断，待验证','running':'检验中','pending':'待运行','failed':'检验未完成','blocked':'数据待补齐','complete':'历史实验完成'}
 
 
 def esc(value):
@@ -22,6 +26,67 @@ def number(value, places=2):
 
 def table(headings, rows):
     return '<div class="table-scroll"><table><thead><tr>'+''.join(f'<th>{esc(x)}</th>' for x in headings)+'</tr></thead><tbody>'+''.join('<tr>'+''.join(f'<td>{esc(c)}</td>' for c in row)+'</tr>' for row in rows)+'</tbody></table></div>'
+
+
+def optional_report(path):
+    if not path.exists():
+        return {}
+    try:
+        result=json.loads(path.read_text(encoding='utf-8'))
+        if not isinstance(result,dict):
+            raise ValueError()
+        return result
+    except (OSError,ValueError):
+        return {'status':'数据不可用','message':'研究记录格式无效，请重新运行研究命令；未用其他结果替代。'}
+
+
+def percent(value):
+    try:
+        numeric=float(value)
+        return number(numeric*100)+'%' if math.isfinite(numeric) else '—'
+    except (ValueError,TypeError,OverflowError):
+        return '—'
+
+
+def research_panel(research, backtest, chart_symbols=()):
+    if not research and not backtest:
+        return ''
+    stocks=research.get('stocks',[])
+    rows=[]
+    for stock in stocks:
+        code=stock['symbol']
+        dimensions=[]
+        evidence=[]
+        for key in ('valuation','liquidity'):
+            item=stock.get(key,{})
+            dimensions.append(item.get('state','待核实') if isinstance(item,dict) else item)
+            if isinstance(item,dict) and item.get('reason'):
+                evidence.append(f'<p>{"估值" if key=="valuation" else "流动性"}：{esc(item["reason"])}</p>')
+        sources=' '.join(f'<a href="{esc(safe_url(url))}" target="_blank" rel="noreferrer">来源 {i}</a>'
+                        for i,url in enumerate(stock.get('source_urls',[]),1) if safe_url(url))
+        button=(f'<button class="chart-link" type="button" data-chart-symbol="{esc(code)}">K 线</button>'
+                if code in chart_symbols else '<span class="muted">K 线待取数</span>')
+        search=' '.join(str(stock.get(k,'')) for k in ('symbol','name','industry','state','reason'))
+        rows.append(f'''<tr class="research-stock" data-search="{esc(search)}"><td><strong>{esc(stock.get('name',code))}</strong><small>{esc(code)} · {esc(stock.get('industry'))}</small></td>
+        <td>{esc(dimensions[0])}</td><td>{esc(dimensions[1])}</td><td>{percent(stock.get('estimated_yield'))}</td><td>{esc(stock.get('state','待核实'))}</td>
+        <td>{button}<details><summary>研究依据</summary><p>{esc(stock.get('reason'))}</p>{''.join(evidence)}{sources}</details></td></tr>''')
+    runs=backtest.get('runs',[])
+    comparisons=table(['实验 / 区间','年化收益','总收益','最大回撤','说明'],[
+        [run.get('label','历史实验'),percent(run.get('metrics',{}).get('cagr')),
+         percent(run.get('metrics',{}).get('total_return')),percent(run.get('metrics',{}).get('max_drawdown')),
+         run.get('message',EXPERIMENT_STATES.get(run.get('status'),run.get('status','')))] for run in runs]) if runs else '<p class="muted">尚无可展示的历史回测结果。</p>'
+    limitations=research.get('limitations',[])+backtest.get('limitations',[])
+    notes=''.join(f'<li>{esc(note)}</li>' for note in dict.fromkeys(limitations))
+    backtest_state=backtest.get('status') or research.get('backtest',{}).get('status') or '待运行'
+    backtest_state=EXPERIMENT_STATES.get(backtest_state,backtest_state)
+    message=backtest.get('message') or research.get('backtest',{}).get('message') or research.get('message','')
+    return f'''<section class="panel research-lab" id="research-lab"><div class="section-title"><h2>策略研究台</h2><span class="pill">手动运行 · 不启用定时任务</span></div>
+    <div class="research-summary"><div><small>研究目标</small><strong>年化 ≥ 10%</strong><span>待验证，不是收益承诺</span></div><div><small>股票研究池</small><strong>{len(stocks)} / {esc(research.get('target_count',20))}</strong><span>研究对象，不等于持仓数量</span></div><div><small>历史检验状态</small><strong>{esc(backtest_state)}</strong><span>与当日模拟账户分开记录</span></div></div>
+    <p class="muted">研究截至 {esc(research.get('as_of'))} · {esc(research.get('version'))}。{esc(research.get('method',''))}</p>
+    <div class="filters"><label>搜索全部研究股票<input id="research-search" type="search" placeholder="公司、代码、行业或待核实问题"></label><span class="muted" id="research-count" aria-live="polite"></span></div>
+    <p class="research-table-hint muted">表格可左右滑动，右侧查看研究依据与 K 线。</p><div class="table-scroll"><table id="research-table"><thead><tr><th>公司</th><th>估值</th><th>流动性</th><th>情景股息率</th><th>分红 / 综合状态</th><th>查看</th></tr></thead><tbody>{''.join(rows)}</tbody></table></div>
+    <p id="research-empty" class="muted" hidden>没有匹配的研究对象。</p><div class="research-pagination"><button id="research-prev" type="button">上一页</button><span id="research-page" aria-live="polite"></span><button id="research-next" type="button">下一页</button></div>
+    <details class="research-results"><summary>历史实验与验证边界</summary><p>{esc(message)}</p>{comparisons}<ul>{notes}</ul><p class="muted">单个区间超过 10% 不代表目标已验证；还需独立区间、交易成本、退市与数据时点检查。历史结果不能保证未来收益。</p></details></section>'''
 
 
 def automatic_panel(data):
@@ -48,14 +113,20 @@ def automatic_panel(data):
     <details><summary>查看全部初筛原因与规则</summary>{screening}<pre class="analysis">{esc(json.dumps(data['rules'],ensure_ascii=False,indent=2))}</pre></details></section>'''
 
 
-def chart_panel(workspace, report, automatic):
+def chart_panel(workspace, report, automatic, research=None):
     chart_path=workspace/'charts.json'
     chart_data=json.loads(chart_path.read_text(encoding='utf-8')) if chart_path.exists() else {}
     stocks=chart_data.get('stocks',{}) if chart_data.get('as_of')==report.get('as_of') else {}
     assessments=automatic.get('assessments',[])
-    focus=automatic.get('focus_symbols',[r['symbol'] for r in report.get('rows',[])[:5]])
+    focus=list(automatic.get('focus_symbols',[r['symbol'] for r in report.get('rows',[])[:5]]))
+    research=research or {}
+    research_stocks=research.get('stocks',[]) if research.get('as_of')==report.get('as_of') else []
+    focus=list(dict.fromkeys(focus+[r['symbol'] for r in research_stocks if r['symbol'] in stocks]))
+    if research_stocks:
+        focus=[code for code in focus if stocks.get(code,{}).get('candles') and not stocks[code].get('error')]
     preferred=next((a['symbol'] for a in assessments if a['state']=='满足价格条件' and a['symbol'] in focus),None)
     names={r['symbol']:r['name'] for r in report.get('rows',[]) if r['symbol'] in focus}
+    names.update({r['symbol']:r.get('name',r['symbol']) for r in research_stocks})
     codes=focus
     stocks={code:stocks[code] for code in codes if code in stocks}
     if not codes:
@@ -75,6 +146,10 @@ def render(workspace, ledger, report, status=None):
     status = status or {"ok":True,"message":"最新运行完成"}
     source = report.get("source", "未运行")
     demo = source == "DEMO"
+    research=optional_report(workspace/'research'/'latest.json') if not demo else {}
+    backtest=optional_report(workspace/'backtests'/'latest.json') if not demo else {}
+    charts=optional_report(workspace/'charts.json')
+    chart_symbols={code for code,stock in charts.get('stocks',{}).items() if stock.get('candles') and not stock.get('error')} if charts.get('as_of')==report.get('as_of')==research.get('as_of') else set()
     auto_file=automatic_path(workspace)/'latest.json'
     automatic=json.loads(auto_file.read_text(encoding='utf-8')) if auto_file.exists() else {}
     if automatic.get('day')!=report.get('as_of') or automatic.get('rules',{}).get('version')!=report.get('strategy_version'):
@@ -133,16 +208,19 @@ def render(workspace, ledger, report, status=None):
     rows = report.get('rows',[])
     style = (ROOT/'qmt/style.css').read_text(encoding='utf-8')
     chart_script = (ROOT/'qmt/chart.js').read_text(encoding='utf-8')
+    research_script = (ROOT/'qmt/research-ui.js').read_text(encoding='utf-8')
     page = f'''<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>NKG · 红利研究工作台</title><style>{style}</style></head>
     <body><main><header><a class="brand" href="#">NKG<span> / DIVIDEND LAB</span></a><span class="local">● 本地研究 · 人工执行</span></header>
     <section class="hero"><div><p class="eyebrow">RESEARCH FIRST, EXECUTION SECOND</p><h1>先看分红能否持续，<br>再等价格满足假设。</h1><p>从沪深主板寻找低估值、持续高股息与强流动性，保留反对证据与资料缺口。<br>研究、模拟、手动成交，分开记录。</p></div><div class="date-card"><small>行情截至</small><strong>{esc(report.get('as_of','尚未运行'))}</strong><span>{esc(source)} · 市场快照 {esc(report.get('pool_date','—'))}</span><span>生成于 {esc(report.get('generated_at','—'))}</span></div></section>
     <div class="notice {'error' if not status.get('ok') or demo else ''}">{'虚构演示数据，不可用于真实交易。 ' if demo else ''}{esc(status.get('message',''))}</div>
-    {automatic_panel(automatic) if not demo else ''}{chart_panel(workspace,report,report.get('demo_operations',{}) if demo else automatic)}
-    <section class="metrics"><div><small>财报研究覆盖</small><strong>{report.get('covered',0)}<i> / {report.get('pool_size',0)}</i></strong><span>月度指数市场快照，不代表全市场</span></div><div><small>待核实 / 观察</small><strong>{sum(r['status'] in ('待核实','观察') for r in rows)}</strong><span>资料不齐时不生成价格结论</span></div><div><small>排除</small><strong>{sum(r['status']=='排除' for r in rows)}</strong><span>保留具体原因，避免只看成功案例</span></div><div><small>可进一步评估</small><strong>{sum(r['status']=='可进一步评估' for r in rows)}</strong><span>满足研究条件 ≠ 自动买入</span></div></section>
+    {research_panel(research,backtest,chart_symbols)}
+    {chart_panel(workspace,report,report.get('demo_operations',{}) if demo else automatic,research)}
+    {('<details class="panel account-fold"><summary>当日模拟账户与订单检查</summary>'+automatic_panel(automatic)+'</details>') if research and not demo else automatic_panel(automatic) if not demo else ''}
+    <section class="metrics"><div><small>财报研究覆盖</small><strong>{report.get('covered',0)}<i> / {report.get('pool_size',0)}</i></strong><span>主板 {report.get('universe_count',0)} 家，财报批次不代表全市场</span></div><div><small>待核实 / 观察</small><strong>{sum(r['status'] in ('待核实','观察') for r in rows)}</strong><span>资料不齐时不生成价格结论</span></div><div><small>排除</small><strong>{sum(r['status']=='排除' for r in rows)}</strong><span>保留具体原因，避免只看成功案例</span></div><div><small>可进一步评估</small><strong>{sum(r['status']=='可进一步评估' for r in rows)}</strong><span>满足研究条件 ≠ 自动买入</span></div></section>
     <section class="panel"><div class="section-title"><h2>重点观察 · 最多 5 只</h2><span class="muted">优先持仓与关注名单，其次满足规则的候选；观察不等于买入</span></div><div class="filters"><label>在观察名单中查找<input id="search" type="search" placeholder="公司、代码或行业"></label><label>研究状态<select id="status"><option value="">全部状态</option><option>待核实</option><option>观察</option><option>排除</option><option>可进一步评估</option></select></label></div>
     <div id="candidates">{''.join(details) or '<p class="empty">运行 daily 获取候选池与数据。</p>'}</div><p id="no-result" hidden>没有匹配的候选。</p></section>
-    {''.join(accounts)}<footer><strong>工作台边界</strong><p>参考价基于正常化盈利与派息假设，税前，不是内在价值。模拟使用下一交易日开盘加不利滑点，含估计佣金与卖出印花税；不保证实际成交。现金分红按登记日资格记应收、派息日入账；个人股息税及送转股需另核对。本项目尚无策略回测或实盘收益证明。</p><p>密钥仅保存在本地配置。研究请求只包含公司公开数据，不上传账本。报告含个人记账信息时请勿公开分享。</p></footer></main>
-    <script>const search=document.querySelector('#search'),status=document.querySelector('#status');function filter(){{let n=0;document.querySelectorAll('.candidate').forEach(el=>{{const visible=el.dataset.search.toLowerCase().includes(search.value.toLowerCase())&&(!status.value||el.dataset.status===status.value);el.hidden=!visible;if(visible)n++;}});document.querySelector('#no-result').hidden=n>0;}}search.addEventListener('input',filter);status.addEventListener('change',filter);</script><script>{chart_script}</script></body></html>'''
+    {''.join(accounts)}<footer><strong>工作台边界</strong><p>参考价基于正常化盈利与派息假设，税前，不是内在价值。模拟使用下一交易日开盘加不利滑点，含估计佣金与卖出印花税；不保证实际成交。现金分红按登记日资格记应收、派息日入账；个人股息税及送转股需另核对。历史实验不能证明策略未来收益或实盘表现。</p><p>密钥仅保存在本地配置。研究请求只包含公司公开数据，不上传账本。报告含个人记账信息时请勿公开分享。</p></footer></main>
+    <script>const search=document.querySelector('#search'),status=document.querySelector('#status');function filter(){{let n=0;document.querySelectorAll('.candidate').forEach(el=>{{const visible=el.dataset.search.toLowerCase().includes(search.value.toLowerCase())&&(!status.value||el.dataset.status===status.value);el.hidden=!visible;if(visible)n++;}});document.querySelector('#no-result').hidden=n>0;}}search.addEventListener('input',filter);status.addEventListener('change',filter);</script><script>{chart_script}</script><script>{research_script}</script></body></html>'''
     path = workspace/'dashboard.html'
     tmp = path.with_suffix('.tmp')
     tmp.write_text(page,encoding='utf-8')
