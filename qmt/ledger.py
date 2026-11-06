@@ -3,6 +3,7 @@ import sqlite3
 from decimal import Decimal, ROUND_FLOOR, ROUND_CEILING
 from .config import AppError, dec, money, date_key, symbol_key, now_cn
 from .research import stock_distribution_terms
+from . import research
 
 
 def rebalance_quantity(actual, target):
@@ -122,7 +123,56 @@ class Ledger:
         fee = max(value*dec(self.cfg['commission_rate']),dec(self.cfg['minimum_commission']))
         return money(fee+(value*dec(self.cfg['sell_stamp_rate']) if side=='sell' else 0))
 
-    def create_plan(self, mode, row, day, next_day, quantity, limit_price, side, note, all_prices, industries):
+    def _historical_sessions(self, mode):
+        marker=self.db.execute("SELECT value FROM metadata WHERE key='automatic-rules'").fetchone()
+        calendar=self.db.execute("SELECT value FROM metadata WHERE key='historical-sessions'").fetchone()
+        if mode!='paper' or not marker or marker[0]!='historical-replay' or not calendar:
+            raise AppError('停牌估值和停牌到期仅供明确登记交易日历的历史模拟。')
+        try:
+            sessions=json.loads(calendar[0])
+            if not isinstance(sessions,list) or not sessions or sessions!=sorted(set(sessions)):
+                raise ValueError()
+            for day in sessions:date_key(day)
+        except (TypeError,ValueError):
+            raise AppError('历史模拟交易日历无效。') from None
+        return sessions
+
+    def _held_values(self, mode, day, prices, held, valuation_only=None):
+        """One risk/mark resolver; carried values never become tradable quotes."""
+        carried={} if valuation_only is None else valuation_only
+        if valuation_only is not None:
+            sessions=self._historical_sessions(mode)
+            if not isinstance(carried,dict) or not set(carried)<=set(held) or day not in sessions:
+                raise AppError('停牌估值须明确对应当日实际持仓。')
+            for symbol,item in carried.items():
+                fields={'day','symbol','quantity','price','price_date','market_value','method','tradable','stale_sessions','proofs'}
+                if (not isinstance(item,dict) or set(item)!=fields or symbol in prices
+                        or item['day']!=day or item['symbol']!=symbol or type(item['quantity']) is not int
+                        or item['quantity']!=held[symbol] or item['method']!='verified_suspension_prior_close'
+                        or item['tradable'] is not False or type(item['stale_sessions']) is not int):
+                    raise AppError('停牌估值字段、持股数或原始行情发生冲突。')
+                price_date=date_key(item['price_date'])
+                if price_date not in sessions or price_date>=day:
+                    raise AppError('停牌估值必须保留更早的真实价格日期。')
+                chain=sessions[sessions.index(price_date)+1:sessions.index(day)+1]
+                proofs=[research.full_day_suspension(symbol,d) for d in chain]
+                if None in proofs or item['proofs']!=proofs or item['stale_sessions']!=len(chain):
+                    raise AppError('停牌估值缺少逐交易日已可用的完整原文证明。')
+                price=dec(item['price'],positive=True)
+                if dec(item['market_value'],positive=True)!=price*held[symbol]:
+                    raise AppError('停牌估值金额与实际股数不一致。')
+        values={}
+        for symbol,qty in held.items():
+            if symbol in carried:
+                values[symbol]=dec(carried[symbol]['market_value'],positive=True)
+                continue
+            quote=prices.get(symbol)
+            if not quote or quote.get('trade_date')!=day:
+                raise AppError(f"{symbol} 缺少当日估值，未用旧价伪造净值。")
+            values[symbol]=dec(quote['close'],positive=True)*qty
+        return values
+
+    def create_plan(self, mode, row, day, next_day, quantity, limit_price, side, note, all_prices, industries, *, valuation_only=None):
         account = self.account(mode)
         symbol = symbol_key(row['symbol'])
         date_key(day)
@@ -140,6 +190,13 @@ class Ledger:
         price = dec(limit_price,positive=True)
         if price != price.quantize(Decimal('0.01')):
             raise AppError("主板股价请按 0.01 元精度输入。")
+        if valuation_only is not None:
+            self._held_values(mode,day,all_prices,self.positions(mode),valuation_only)
+            if symbol in valuation_only:
+                raise AppError('停牌账面估值不可用于创建买卖计划或限价。')
+            quote=all_prices.get(symbol)
+            if not quote or quote.get('trade_date')!=day or research.full_day_suspension(symbol,day):
+                raise AppError('创建交易计划仍须该股票当日真实行情，不能使用停牌估值。')
         with self.db:
             self.db.execute('BEGIN IMMEDIATE')
             plans = self.open_plans(mode)
@@ -154,12 +211,11 @@ class Ledger:
             else:
                 if not row.get('industry') or row['industry']=='待核实':
                     raise AppError("缺少行业归类，不能校验集中度。")
-                values = {}
-                for code,qty in held.items():
-                    quote = all_prices.get(code)
-                    if not quote or quote.get('trade_date')!=day or not industries.get(code):
-                        raise AppError("已有持仓缺少当日估值/行业，暂停新增。")
-                    values[code] = dec(quote['close'],positive=True)*qty
+                if any(not industries.get(code) for code in held):
+                    raise AppError("已有持仓缺少当日估值/行业，暂停新增。")
+                if valuation_only is None and any(not all_prices.get(code) or all_prices[code].get('trade_date')!=day for code in held):
+                    raise AppError("已有持仓缺少当日估值/行业，暂停新增。")
+                values=self._held_values(mode,day,all_prices,held,valuation_only)
                 reserve = Decimal(0)
                 for plan in plans:
                     if plan['side']=='buy':
@@ -229,7 +285,15 @@ class Ledger:
             if not changed:
                 raise AppError("计划不存在或已结束。")
 
-    def settle_paper(self, day, market):
+    def settle_paper(self, day, market, *, suspensions=None):
+        if suspensions is not None:
+            sessions=self._historical_sessions('paper')
+            if not isinstance(suspensions,dict) or day not in sessions:
+                raise AppError('历史停牌到期日期或证明映射无效。')
+            for symbol,proof in suspensions.items():
+                expected=research.full_day_suspension(symbol,day)
+                if not expected or proof!=expected or day in market.get(symbol,{}):
+                    raise AppError('停牌到期证明未核实或与原始行情冲突。')
         with self.db:
             self.db.execute('BEGIN IMMEDIATE')
             for plan in sorted(self.open_plans('paper'),key=lambda p:(p['execute_date'],p['id'])):
@@ -237,6 +301,10 @@ class Ledger:
                     continue
                 bar = market.get(plan['symbol'],{}).get(plan['execute_date'])
                 if not bar:
+                    if plan['execute_date']==day and suspensions is not None and plan['symbol'] in suspensions:
+                        self.db.execute("UPDATE plans SET status='expired',note=note||? WHERE id=?",
+                            ('；已核实执行日全天停牌，订单到期且不延至复牌追单',plan['id']))
+                        continue
                     raise AppError("计划执行日日线缺失，保留计划，不能假定停牌或成交。")
                 reason = ''
                 direction = 1 if plan['side']=='buy' else -1
@@ -338,15 +406,11 @@ class Ledger:
             self.db.execute("INSERT INTO cash_events VALUES('manual',?,?,?,?,?)",(reference,day,symbol,str(value),note))
             self.db.execute("DELETE FROM marks WHERE mode='manual' AND day>=?",(day,))
 
-    def mark(self, mode, day, prices):
+    def mark(self, mode, day, prices, *, valuation_only=None):
         cash = self.cash(mode,day)
         receivable = sum((dec(r[0]) for r in self.db.execute("SELECT amount FROM entitlements WHERE mode=? AND ex_date<=? AND pay_date>?",(mode,day,day))),Decimal(0))
         equity = cash+receivable
-        for symbol,qty in self.positions(mode,day).items():
-            quote = prices.get(symbol)
-            if not quote or quote.get('trade_date')!=day:
-                raise AppError(f"{symbol} 缺少当日估值，未用旧价伪造净值。")
-            equity += dec(quote['close'],positive=True)*qty
+        equity += sum(self._held_values(mode,day,prices,self.positions(mode,day),valuation_only).values(),Decimal(0))
         with self.db:
             self.db.execute('INSERT OR REPLACE INTO marks VALUES(?,?,?,?,?)',(mode,day,str(cash),str(receivable),str(money(equity))))
 

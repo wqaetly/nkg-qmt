@@ -123,6 +123,7 @@ class AnnualExperimentTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root=Path(tmp);client,prepare=annual_sources(root,dict(zip(DATES,([A],[],[A,B],[B]))))
             replay={'initial_cash':load_config()['paper_cash'],'metrics':{},'trades':[],'skipped':[],
+                    'valuation_events':[],
                     'assumptions':{'freeze_policy':'portfolio'},
                     'equity_curve':[{'day':d,'equity':load_config()['paper_cash'],'exposure':0} for d in SESSIONS]}
             with patch('qmt.experiment.Tushare',return_value=client), \

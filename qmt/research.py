@@ -5,7 +5,7 @@ from decimal import Decimal, InvalidOperation
 from urllib.parse import urlparse
 
 from vendor.dividend_stock_research.dividend_price import calculate
-from .config import ROOT, AppError, date_key, dec
+from .config import ROOT, AppError, date_key, dec, symbol_key
 
 
 DISCLOSURES = json.loads((ROOT/'qmt/disclosures.json').read_text(encoding='utf-8'))
@@ -53,6 +53,26 @@ def _verified_source(item):
         raise AppError('已核实披露缺少有效的原文链接、SHA256 或页码。')
     return {'source': source, 'source_sha256': digest, 'pages': pages,
             'available_on': date_key(item.get('available_on'))}
+
+
+def full_day_suspension(symbol, day):
+    """A dated primary-source proof, never an inference from a missing quote."""
+    code=symbol_key(symbol); stamp=date_key(day)
+    records=DISCLOSURES.get('full_day_suspensions',[])
+    if not isinstance(records,list) or any(not isinstance(item,dict) for item in records):
+        raise AppError('全天停牌登记须为原文证据对象列表。')
+    matches=[item for item in records if item.get('symbol')==code and item.get('day')==stamp]
+    if not matches:
+        return None
+    if len(matches)!=1:
+        raise AppError('同一公司同日的停牌证据重复或冲突，未选择其一。')
+    item=matches[0]
+    if item.get('full_day') is not True:
+        raise AppError('停牌估值仅接受明确的全天停牌，未把半日停牌当作全天。')
+    source=_verified_source(item)
+    if source['available_on']>stamp:
+        return None
+    return {'symbol':code,'day':stamp,'full_day':True,**source}
 
 
 def _financial_zero_rows(rows, as_of):

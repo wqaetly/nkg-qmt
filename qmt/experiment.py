@@ -10,31 +10,31 @@ from collections import Counter
 from .automatic import assess, dividend_assessment
 from .config import AppError, atomic_json, date_key, dec, now_cn, load_config
 from .market import Tushare
-from .research import implemented_dividends, summarize, statements, DISCLOSURES
+from .research import implemented_dividends, summarize, statements, DISCLOSURES, full_day_suspension
 from .selection import load_rules, mainboard, positive, liquidity
 from .service import read_json
 from .industry import industry_at, load_industry_history
 
 
-EXPERIMENT = {'version':'historical-dividend-v24','selection_day':'20221230','development_end':'20241231',
+EXPERIMENT = {'version':'historical-dividend-v25','selection_day':'20221230','development_end':'20241231',
               'validation_start':'20250101','pool_size':20,'entry_yields':['0.04','0.05','0.06'],
               'primary_entry_yield':'0.05','target_cagr':'0.10','benchmark':'515180.SH','earnings_basis':'conservative_minimum',
-              'freeze_policy':'portfolio'}
-LONG_EXPERIMENT = {**EXPERIMENT,'version':'historical-dividend-v24-long','selection_day':'20141231',
+              'freeze_policy':'portfolio','suspension_valuation':'verified_full_day_prior_close'}
+LONG_EXPERIMENT = {**EXPERIMENT,'version':'historical-dividend-v25-long','selection_day':'20141231',
                    'development_end':'20191231','validation_start':'20200101','benchmark':'510880.SH'}
-QUALITY_EXPERIMENT = {**EXPERIMENT,'version':'historical-dividend-v24-quality','quality_first':True}
-QUALITY_LONG_EXPERIMENT = {**LONG_EXPERIMENT,'version':'historical-dividend-v24-quality-long','quality_first':True}
-ANNUAL_EXPERIMENT = {**QUALITY_EXPERIMENT,'version':'historical-dividend-v24-annual','pool_refresh':'year_end',
+QUALITY_EXPERIMENT = {**EXPERIMENT,'version':'historical-dividend-v25-quality','quality_first':True}
+QUALITY_LONG_EXPERIMENT = {**LONG_EXPERIMENT,'version':'historical-dividend-v25-quality-long','quality_first':True}
+ANNUAL_EXPERIMENT = {**QUALITY_EXPERIMENT,'version':'historical-dividend-v25-annual','pool_refresh':'year_end',
     'pool_exit':'退出名单的资料待核实持仓继续冻结跟踪；其他退出名单股票按下一交易日限价退出。行业沿用首次归属，变更冻结。',
     'monthly_targets':'沿用原回放月末重配：除冻结持仓外，仅当月仍满足全部买入条件者保留目标；不宣称只在3%股息率以下退出。'}
-ANNUAL_LONG_EXPERIMENT = {**ANNUAL_EXPERIMENT,'version':'historical-dividend-v24-annual-long',
+ANNUAL_LONG_EXPERIMENT = {**ANNUAL_EXPERIMENT,'version':'historical-dividend-v25-annual-long',
     'selection_day':LONG_EXPERIMENT['selection_day'],'development_end':LONG_EXPERIMENT['development_end'],
     'validation_start':LONG_EXPERIMENT['validation_start'],'benchmark':LONG_EXPERIMENT['benchmark']}
 
 
-HOLD_EXPERIMENT = {**ANNUAL_EXPERIMENT,'version':'historical-dividend-v24-annual-hold','retention_yield':'0.03',
+HOLD_EXPERIMENT = {**ANNUAL_EXPERIMENT,'version':'historical-dividend-v25-annual-hold','retention_yield':'0.03',
     'monthly_targets':'月末检查：当期成员财务已核实、流动性通过且当日情景股息率至少3%可保留；估值及历史股息入场条件不单独触发卖出。仅持有资格不允许加仓；仍满足完整入场条件者沿用原重配。保留股先占额度，按原月度单股预算与行业额度整手修剪，资料待核实仍冻结；不是每日风险退出。'}
-HOLD_LONG_EXPERIMENT = {**ANNUAL_LONG_EXPERIMENT,'version':'historical-dividend-v24-annual-long-hold',
+HOLD_LONG_EXPERIMENT = {**ANNUAL_LONG_EXPERIMENT,'version':'historical-dividend-v25-annual-long-hold',
                        'retention_yield':HOLD_EXPERIMENT['retention_yield'],'monthly_targets':HOLD_EXPERIMENT['monthly_targets']}
 
 
@@ -82,10 +82,13 @@ def protocol(cfg, experiment=EXPERIMENT, end=None):
     for name in ('experiment.py','backtest.py','research.py','automatic.py','ledger.py','selection.py','industry.py','comparison.py','market.py','config.py','service.py','disclosures.json'):
         code_hash.update((Path(__file__).parent/name).read_bytes())
     code_hash.update((Path(__file__).parent.parent/'vendor/dividend_stock_research/dividend_price.py').read_bytes())
-    return {**experiment,'replay_end':end,'rules':load_rules(),'account_config':cfg,'engine_sha256':code_hash.hexdigest()}
+    return {**experiment,'suspension_valuation':experiment.get('suspension_valuation','verified_full_day_prior_close'),
+            'replay_end':end,'rules':load_rules(),'account_config':cfg,'engine_sha256':code_hash.hexdigest()}
 
 
 def validate_experiment(experiment):
+    if experiment.get('suspension_valuation','verified_full_day_prior_close')!='verified_full_day_prior_close':
+        raise AppError('未知停牌估值定义，未登记或回退为默认规则。')
     if experiment.get('earnings_basis','conservative_minimum') not in ('conservative_minimum','ttm'):
         raise AppError('未知实验盈利口径，未登记或回退为默认规则。')
     mode=experiment.get('entry_mode','yield_threshold')
@@ -413,6 +416,9 @@ def holding_freeze_diagnostics(result, signals, audits, data, policy):
         raise AppError('实际冻结诊断须与完整回放的冻结范围一致。')
     curve={point['day']:point for point in result['equity_curve']}
     assessments={month['day']:{a['symbol']:a for a in month['assessments']} for month in audits}
+    carried={(row['day'],row['symbol']):row for row in result.get('valuation_events',[])}
+    if len(carried)!=len(result.get('valuation_events',[])):
+        raise AppError('实际停牌估值记录重复，未生成冻结诊断。')
     skips=Counter(item['day'] for item in result['skipped']
                   if item['reason']=='既有持仓资料待核实，保留冻结股数并暂停新增买入')
     if set(skips)-set(signals):
@@ -433,7 +439,19 @@ def holding_freeze_diagnostics(result, signals, audits, data, policy):
             assessment=assessments[day][code]
             if assessment['state']!='待数据核实':
                 raise AppError('实际冻结持仓与当时研究状态不一致，未生成诊断。')
-            value=dec(data['bars'][code][day]['close'],positive=True)*held[code]
+            bar=data['bars'][code].get(day)
+            if bar is not None:
+                if (day,code) in carried:
+                    raise AppError('真实当日行情与停牌估值记录冲突。')
+                value=dec(bar['close'],positive=True)*held[code]
+            else:
+                event=carried.get((day,code))
+                if (not event or event.get('quantity')!=held[code] or event.get('tradable') is not False
+                        or event.get('method')!='verified_suspension_prior_close'):
+                    raise AppError('冻结持仓缺少真实行情或已核实停牌估值，未生成诊断。')
+                value=dec(event['price'],positive=True)*held[code]
+                if value!=dec(event['market_value'],positive=True):
+                    raise AppError('停牌估值金额与冻结持仓不一致。')
             output['rows'].append({'day':day,'symbol':code,'quantity':held[code],'market_value':str(value),
                 'weight':str(value/dec(point['equity'],positive=True)),'active':assessment['active'],
                 'reason':assessment['reason'],'scope':'portfolio' if code in global_frozen else 'position'})
@@ -449,6 +467,15 @@ def run_experiment(workspace, end, cfg, progress=print, experiment=EXPERIMENT):
     primary_label='股息排序主方案（含估计成本）' if rank else '5%门槛主方案（含估计成本）'
     prepare=prepare_annual_experiment if experiment.get('pool_refresh')=='year_end' else prepare_experiment
     path,client,cohort,data,dossiers,names,history,amounts,industries,peers=prepare(workspace,end,progress,cfg,experiment)
+    records=DISCLOSURES.get('full_day_suspensions',[])
+    if not isinstance(records,list) or any(not isinstance(item,dict) for item in records):
+        raise AppError('全天停牌登记须为原文证据对象列表。')
+    proofs=[]
+    for item in records:
+        proof=full_day_suspension(item.get('symbol'),item.get('day'))
+        if proof and proof['symbol'] in data['bars'] and proof['day'] in data['sessions']:
+            proofs.append(proof)
+    atomic_json(path/'suspensions.json',{'policy':'verified_full_day_prior_close','proofs':proofs})
     runs=[]; comparison_series=[]; diagnostics={}; periods={}; primary_metrics={}
     for rate in experiment['entry_yields']:
         signals,audits=experiment_signals(client,cohort,data,dossiers,names,history,amounts,rate,industries,peers,progress,experiment)
@@ -471,6 +498,9 @@ def run_experiment(workspace, end, cfg, progress=print, experiment=EXPERIMENT):
                     {'day':p['day'],'value':float(dec(p['equity'])/dec(result['initial_cash']))} for p in result['equity_curve']]})
                 diagnostics['skips']=[{'reason':reason,'count':count} for reason,count in Counter(s['reason'] for s in result['skipped']).most_common()]
                 diagnostics['holding_freezes']=held_freezes
+                valuation_events=result['valuation_events']
+                diagnostics['suspension_valuations']={'days':len({e['day'] for e in valuation_events}),
+                    'company_days':len(valuation_events),'rows':valuation_events}
             curve=result['equity_curve']
             development=[p for p in curve if p['day']<=experiment['development_end']]
             validation=[development[-1]]+[p for p in curve if p['day']>=experiment['validation_start']]
@@ -507,6 +537,7 @@ def run_experiment(workspace, end, cfg, progress=print, experiment=EXPERIMENT):
                        experiment.get('monthly_targets','月末重新分配目标；除资料待核实的冻结持仓外，不再满足买入条件会退出。这不是仅在预测股息率低于3%才卖出的持有策略。'),
                        ('单股研究资料待核实时保留股数并占用额度，其他合格股仍可按原约束买入；持仓身份或行业不明继续暂停组合新增，估值或股份权益不可核实仍阻断回放。' if experiment.get('freeze_policy')=='position'
                         else '任一实际持仓资料待核实即暂停组合全部新增买单，包括加仓；其他持仓仍可能卖出。'),
+                       '仅对逐交易日都有当时可获知全天停牌证据的区间，按最后真实收盘价计算持仓账面金额，并保留原价日期；不生成成交行情，不代表当日公允或可变现价格。未知间隙、行情冲突及跨除权除息仍阻断。',
                        '当前为税前现金及股份分派与保守费用；仅入账公告已核实且新增股数为整数的送转，未核实/零碎股或持仓估值缺失会阻断，不删除异常股票来美化收益。']}
     atomic_json(path/'summary.json',output)
     atomic_json(workspace/'backtests'/'latest.json',output)

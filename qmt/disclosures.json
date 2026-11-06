@@ -1,4 +1,16 @@
 {
+  "full_day_suspensions": [
+    {
+      "symbol": "600566.SH",
+      "day": "20250718",
+      "full_day": true,
+      "available_on": "20250718",
+      "source": "https://static.cninfo.com.cn/finalpage/2025-07-18/1224202264.PDF",
+      "source_sha256": "bb21ff105e450ca1cdb7acc0117cb259d20947f7eea288f2a406c3a9044ce4bd",
+      "pages": "1",
+      "note": "2025-054公告明确2025年7月18日全天停牌。可获知时间仅核实到披露日，不声称盘前已知；本登记不使用后来的复牌公告或要约价格，也不提供可成交行情。"
+    }
+  ],
   "industry_conflicts": [
     {
       "symbol": "600882.SH",

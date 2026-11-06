@@ -106,10 +106,13 @@ def comparison_chart(backtest):
     if not series:
         return '<p class="muted">比较曲线待取数，缺少数据时不绘制替代走势。</p>'
     missing_strategy='' if any(line.get('kind')=='strategy' for line in series) else '<p class="notice">本区间策略结果尚不可用。现金与 ETF 只作参照，不能把现金线当作策略收益或已通过验证。</p>'
+    valuations=backtest.get('diagnostics',{}).get('suspension_valuations')
+    valuation_note=(' 停牌沿用前收盘仅作持仓账面估值，不代表当日成交价或公允价值；'
+                    '<a href="#suspension-valuations">查看停牌账面估值与逐日证据</a>。') if isinstance(valuations,dict) and valuations else ''
     encoded=json.dumps(series,ensure_ascii=False).replace('<','\\u003c').replace('>','\\u003e').replace('&','\\u0026')
     return f'''<section class="comparison-panel"><h3>历史资产走势 · 起点 = 1</h3>{missing_strategy}<div id="comparison-legend" class="comparison-legend" aria-label="显示比较曲线"></div>
     <div id="comparison-chart" class="comparison-chart" tabindex="0" aria-label="历史资产比较；左右方向键查看日期"></div><p id="comparison-tip" class="chart-tip" aria-live="polite"></p>
-    <p class="muted">策略净资产、ETF 复权价格和现金分别计算；ETF 不是可成交账本，费用及分红处理口径可能不同。图形只表示历史记录，不外推目标收益。</p>
+    <p class="muted">策略净资产、ETF 复权价格和现金分别计算；ETF 不是可成交账本，费用及分红处理口径可能不同。图形只表示历史记录，不外推目标收益。{valuation_note}</p>
     <script type="application/json" id="comparison-data">{encoded}</script></section>'''
 
 
@@ -329,6 +332,41 @@ def holding_freezes_panel(data):
     <p class="muted">每行是一家公司在一个评估月的实际持仓状态，同月多只冻结持仓仍只算一个组合月。跳过次数是买入尝试，不是订单、成交或亏损，也不分摊为单只股票的独立影响。最新评估日不等于回放最后估值日；缺失资料或待核实事项不等于已知财务不合格。</p>{details}</div>'''
 
 
+def suspension_valuations_panel(data):
+    if not isinstance(data,dict) or not data:
+        return ''
+    rows=[]
+    for item in sorted(data.get('rows') or [],key=lambda item:str(item.get('day','')),reverse=True):
+        verified=item.get('method')=='verified_suspension_prior_close' and item.get('tradable') is False
+        method='沿用前收盘；禁止成交' if verified else '估值方法或禁止成交标记未核实'
+        proofs=[]
+        for proof in item.get('proofs') or []:
+            source=safe_url(proof.get('source'))
+            link=f'<a href="{esc(source)}" target="_blank" rel="noreferrer">停牌原文</a>' if source else '原文链接不可用'
+            pages=proof.get('pages')
+            if isinstance(pages,list):
+                pages='、'.join(str(page) for page in pages)
+            status='全日停牌' if proof.get('full_day') is True else '全日停牌未核实'
+            proofs.append(f'<p>{esc(proof.get("symbol"))} · 证明日期 {esc(proof.get("day"))} · {status}<br>可获知日 {esc(proof.get("available_on"))} · 页码 {esc(pages)} · {link}</p>')
+        evidence=''.join(proofs) or '逐日证据未记录'
+        if len(proofs)>1:
+            evidence=f'<details><summary>逐日证据 {len(proofs)} 项</summary>{evidence}</details>'
+        cells=[item.get('day'),item.get('symbol'),item.get('quantity')]
+        first=''.join(f'<td>{esc(value)}</td>' for value in cells)
+        last=''.join(f'<td>{esc(value)}</td>' for value in [item.get('price_date'),number(item.get('market_value')),percent(item.get('weight')),item.get('stale_sessions')])
+        rows.append(f'<tr>{first}<td>{esc(item.get("price"))}<br><small>{method}</small></td>{last}<td>{evidence}</td></tr>')
+    if rows:
+        headings=['估值日','公司代码','实际股数','估值价 / 元','原价格日','账面市值 / 元','占当日净值','陈旧交易日数','逐日证据']
+        details='<div class="table-scroll" tabindex="0" role="region" aria-label="停牌账面估值，可左右滚动"><table><thead><tr>'+''.join(f'<th>{esc(value)}</th>' for value in headings)+'</tr></thead><tbody>'+''.join(rows)+'</tbody></table></div>'
+    elif data.get('rows')==[] and data.get('days')==0 and data.get('company_days')==0:
+        details='<p>本版停牌沿用前收盘的持仓估值为 0 次。</p>'
+    else:
+        details='<p>估值明细未记录或与计数不一致，不能当作 0 次。</p>'
+    return f'''<div id="suspension-valuations"><p><strong>历史主方案 · 停牌账面估值</strong></p>
+    <p>涉及 {esc(data.get('days'))} 个交易日、{esc(data.get('company_days'))} 公司·日。每行是实际持仓在一个交易日采用的估值；公司·日不等于冻结表的公司·月，也不是订单或成交次数。</p>
+    <p class="muted">沿用前收盘仅作持仓账面估值，不代表当日成交价或公允价值；禁止以此价格模拟当日成交。估值方法或禁止成交标记缺失、异常时显示未核实。原价格日是行情发生日期，证明可获知日是证据当时可用的日期，两者不同；不补画停牌日 K 线或买卖标记。</p>{details}</div>'''
+
+
 def research_panel(research, backtest, chart_symbols=(), history=''):
     if not research and not backtest and not history:
         return ''
@@ -401,7 +439,7 @@ def research_panel(research, backtest, chart_symbols=(), history=''):
                 pool.get('evaluated_count')] for pool in rebalances])
             pool_table+='<p class="muted">仅在年末重筛候选池，月度评估当期候选；不是每月扫描全市场。实际入池是候选覆盖，不是实际持仓；已检查数使用实验记录，旧记录未保存时显示“—”。未入池候选含条件不满足或排序未选中，不等于财务不合格；年度淘汰原因按公司 / 建池时点计数，同一公司可能重复出现。</p>'
         diagnoses=f'''<details class="research-results" id="research-diagnostics"><summary>建池淘汰、筛选与未成交原因</summary><p>{esc(selection_note)}</p><p>共 {esc(diagnostics.get('evaluations'))} 次公司 / 时点评估。{esc(states)}</p>
-        {funnel}{pool_table}{holding_freezes_panel(diagnostics.get('holding_freezes'))}{conflicts}{disclosure_diagnostics_panel(diagnostics)}<p class="muted">建池淘汰按{'公司 / 建池时点' if rebalances else '公司'}计数，筛选按公司 / 时点计数，执行跳过按事件计数，三者不能相加。数据不足、未达到价格要求和资金不够买一手是不同原因；不能为了产生交易把它们视为通过。</p>{reasons}</details>'''
+        {funnel}{pool_table}{holding_freezes_panel(diagnostics.get('holding_freezes'))}{suspension_valuations_panel(diagnostics.get('suspension_valuations'))}{conflicts}{disclosure_diagnostics_panel(diagnostics)}<p class="muted">建池淘汰按{'公司 / 建池时点' if rebalances else '公司'}计数，筛选按公司 / 时点计数，执行跳过按事件计数，三者不能相加。数据不足、未达到价格要求和资金不够买一手是不同原因；不能为了产生交易把它们视为通过。</p>{reasons}</details>'''
     limitations=research.get('limitations',[])+backtest.get('limitations',[])
     notes=''.join(f'<li>{esc(note)}</li>' for note in dict.fromkeys(limitations) if note!=backtest.get('protocol',{}).get('monthly_targets'))
     backtest_state=backtest.get('status') or research.get('backtest',{}).get('status') or '待运行'

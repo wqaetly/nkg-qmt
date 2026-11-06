@@ -55,6 +55,8 @@ class FreezePolicyTests(unittest.TestCase):
         explicit = simulate(data, signals, cfg, freeze_policy='portfolio')
         self.assertEqual(result, explicit)
         self.assertEqual(result['assumptions'].pop('freeze_policy'), 'portfolio')
+        self.assertEqual(result['assumptions'].pop('suspension_valuation'), 'verified_full_day_prior_close')
+        self.assertEqual(result.pop('valuation_events'), [])
         # Captured from the unchanged engine with this exact deterministic toy fixture.
         self.assertEqual(hashlib.sha256(json.dumps(result, sort_keys=True).encode()).hexdigest(),
                          'e3bf1fdc1e91dfe203a2191e88765776e4798e1eebfadfc22144401c4ee18305')

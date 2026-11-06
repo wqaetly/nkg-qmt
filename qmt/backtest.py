@@ -8,6 +8,7 @@ from statistics import median
 
 from .config import AppError, date_key, dec, money, symbol_key
 from .ledger import Ledger, rebalance_quantity
+from . import research
 
 
 def metrics(curve, trades, initial_cash):
@@ -99,6 +100,8 @@ def _inputs(data, signals, max_holdings, *, freeze_policy='portfolio'):
             date_key(day)
             if day not in sessions:
                 raise AppError('回测日线包含窗口外或非交易日记录。')
+            if research.full_day_suspension(symbol,day):
+                raise AppError(f'{symbol} {day} 全天停牌证明与原始日线冲突。')
             bar = {k:dec(row[k],positive=k!='vol') for k in ('open','high','low','close','vol')}
             bar.update(up=dec(row['up'],positive=True) if row.get('up') is not None else None,
                        down=dec(row['down'],positive=True) if row.get('down') is not None else None)
@@ -136,7 +139,8 @@ def _inputs(data, signals, max_holdings, *, freeze_policy='portfolio'):
         if day not in sessions or not isinstance(candidates,list) or not isinstance(frozen,list) or not isinstance(retained,list):
             raise AppError('信号日期不在回测交易日内，或候选格式无效。')
         if (any(not isinstance(code,str) for code in retained) or len(set(retained))!=len(retained)
-                or any(code not in bars or day not in bars[code] for code in retained)):
+                or any(code not in bars or (day not in bars[code] and not research.full_day_suspension(code,day))
+                       for code in retained)):
             raise AppError('保留股票代码格式无效、重复或缺少信号日行情。')
         if set(retained)&set(frozen):
             raise AppError('同一股票不能同时保留与资料缺失冻结。')
@@ -199,6 +203,29 @@ def _inputs(data, signals, max_holdings, *, freeze_policy='portfolio'):
     return sessions,bars,dividends,snapshots
 
 
+def suspension_values(held, day, sessions, bars, dividends, last_real):
+    """Value only verified missing bars, anchored to the last actual raw close."""
+    values={}
+    for symbol,quantity in held.items():
+        if day in bars[symbol] or not research.full_day_suspension(symbol,day):
+            continue
+        price_date=last_real.get(symbol)
+        if price_date is None:
+            raise AppError(f'{symbol} 停牌估值没有更早的真实收盘价。')
+        chain=sessions[sessions.index(price_date)+1:sessions.index(day)+1]
+        proofs=[research.full_day_suspension(symbol,d) for d in chain]
+        if None in proofs:
+            raise AppError(f'{symbol} 停牌前价之间存在未经核实的行情缺口。')
+        if any(price_date<event['ex_date']<=day for event in dividends.get(symbol,[])):
+            raise AppError(f'{symbol} 停牌估值跨越除权除息，不能沿用原始前价。')
+        price=bars[symbol][price_date]['close']
+        values[symbol]={'day':day,'symbol':symbol,'quantity':quantity,'price':str(price),
+            'price_date':price_date,'market_value':str(price*quantity),
+            'method':'verified_suspension_prior_close','tradable':False,
+            'stale_sessions':len(chain),'proofs':proofs}
+    return values
+
+
 def simulate(data, signals, cfg, initial_cash=None, max_holdings=5, *, freeze_policy='portfolio'):
     """Replay raw daily bars and supplied ranked close-of-day candidate snapshots.
 
@@ -214,7 +241,9 @@ def simulate(data, signals, cfg, initial_cash=None, max_holdings=5, *, freeze_po
     Retain-only held shares keep at most their current quantity within the same monthly
     target budgets. Candidates still rebalance normally; no daily price-driven trimming.
     An empty list exits; absent snapshots keep positions. Signals at the last session
-    cannot fill. Missing bars and unverified or fractional held distributions halt.
+    cannot fill. Verified full-day suspensions use an explicit prior-close holding
+    valuation, preserve shares and expire execution-day orders without fills.
+    Other missing bars and unverified or fractional held distributions halt.
     """
     initial_cash=cfg['paper_cash'] if initial_cash is None else initial_cash
     sessions,bars,dividends,snapshots = _inputs(data,signals,max_holdings,freeze_policy=freeze_policy)
@@ -223,38 +252,51 @@ def simulate(data, signals, cfg, initial_cash=None, max_holdings=5, *, freeze_po
     try:
         ledger.initialize('paper',initial_cash,cfg['paper_max_position'],cfg['paper_max_sector'],sessions[0])
         ledger.db.execute("INSERT INTO metadata VALUES('automatic-rules','historical-replay')")
+        ledger.db.execute("INSERT INTO metadata VALUES('historical-sessions',?)",(json.dumps(sessions),))
         ledger.db.commit()
         session_index = {day:i for i,day in enumerate(sessions)}
         event_dates = {e[key] for events in dividends.values() for e in events for key in ('ex_date','pay_date')
                        if e.get(key) and sessions[0]<=e[key]<=sessions[-1]}
-        curve = []; skipped = []
+        curve = []; skipped = []; valuation_events = []; last_real = {}
         for day in sorted(set(sessions)|event_dates):
             active_events = {s:[e for e in events if day in (e['ex_date'],e['pay_date'])]
                              for s,events in dividends.items()}
             ledger.dividends(active_events,day)
             if day not in session_index:
                 continue
-            ledger.settle_paper(day,bars)
+            suspended={}
+            for symbol,rows in bars.items():
+                if day in rows:
+                    last_real[symbol]=day
+                else:
+                    proof=research.full_day_suspension(symbol,day)
+                    if proof:suspended[symbol]=proof
+            ledger.settle_paper(day,bars,suspensions=suspended or None)
             prices = {s:{'trade_date':day,'close':rows[day]['close']} for s,rows in bars.items() if day in rows}
-            ledger.mark('paper',day,prices)
+            valuation_only=suspension_values(ledger.positions('paper',day),day,sessions,bars,dividends,last_real)
+            ledger.mark('paper',day,prices,valuation_only=valuation_only or None)
             account = ledger.summary('paper')
             mark = account['marks'][-1]
             equity = dec(mark['equity'],positive=True)
+            valuation_events.extend({**value,'weight':str(dec(value['market_value'])/equity)}
+                                    for symbol,value in sorted(valuation_only.items()))
             exposure = (equity-dec(mark['cash'])-dec(mark['receivable']))/equity
             curve.append({**mark,'exposure':float(exposure),'positions':dict(account['positions'])})
             if day not in snapshots or session_index[day]==len(sessions)-1:
                 continue
             next_day = sessions[session_index[day]+1]
             held = ledger.positions('paper')
-            frozen = set(snapshots[day]['freeze'])&set(held)
-            blocked = frozen if freeze_policy=='portfolio' else set(snapshots[day]['portfolio_freeze'])&set(held)
+            research_frozen = set(snapshots[day]['freeze'])&set(held)
+            frozen = research_frozen|set(valuation_only)
+            blocked = research_frozen if freeze_policy=='portfolio' else set(snapshots[day]['portfolio_freeze'])&set(held)
             targets = {code:held[code] for code in frozen}; targets_price = {}; sector_values = {}
             for code in frozen:
                 sector=data['industries'][code]
-                sector_values[sector]=sector_values.get(sector,Decimal(0))+dec(prices[code]['close'])*held[code]
+                value=dec(valuation_only[code]['market_value']) if code in valuation_only else dec(prices[code]['close'])*held[code]
+                sector_values[sector]=sector_values.get(sector,Decimal(0))+value
             budget = min(dec(cfg['paper_max_position']),equity*Decimal('.9')/max_holdings)
             candidate_codes = {c['symbol'] for c in snapshots[day]['candidates']}
-            for code in sorted((set(snapshots[day].get('retain',[]))&set(held))-candidate_codes):
+            for code in sorted((set(snapshots[day].get('retain',[]))&set(held))-candidate_codes-frozen):
                 close = dec(prices[code]['close'])
                 sector = data['industries'][code]
                 available = min(budget,dec(cfg['paper_max_sector'])-sector_values.get(sector,Decimal(0)))
@@ -264,6 +306,9 @@ def simulate(data, signals, cfg, initial_cash=None, max_holdings=5, *, freeze_po
                     sector_values[sector] = sector_values.get(sector,Decimal(0))+close*quantity
             for candidate in snapshots[day]['candidates']:
                 code = candidate['symbol']
+                if code not in prices and research.full_day_suspension(code,day):
+                    skipped.append({'day':day,'symbol':code,'reason':'已核实信号日全天停牌，保留原持股且不创建买卖目标'})
+                    continue
                 if len(targets)>=max_holdings:
                     break
                 if code not in prices:
@@ -310,17 +355,19 @@ def simulate(data, signals, cfg, initial_cash=None, max_holdings=5, *, freeze_po
                     row = {'symbol':code,'industry':data['industries'][code],'automatic_signal':True,
                            'review_hash':hashlib.sha256(json.dumps(snapshots[day],sort_keys=True).encode()).hexdigest()}
                     try:
-                        ledger.create_plan('paper',row,day,next_day,quantity,price,side,'历史月度目标调整',prices,data['industries'])
+                        ledger.create_plan('paper',row,day,next_day,quantity,price,side,'历史月度目标调整',prices,data['industries'],
+                                           valuation_only=valuation_only or None)
                     except AppError as exc:
                         skipped.append({'day':day,'symbol':code,'reason':str(exc)})
         trades = [dict(r) for r in ledger.db.execute("SELECT p.symbol,p.side,p.signal_date,f.* FROM fills f JOIN plans p ON p.id=f.plan_id ORDER BY f.id")]
         plans = [dict(r) for r in ledger.db.execute('SELECT * FROM plans ORDER BY id')]
         return {'start':sessions[0],'end':sessions[-1],'initial_cash':str(money(initial_cash)),
-                'equity_curve':curve,'trades':trades,'plans':plans,'skipped':skipped,
+                'equity_curve':curve,'trades':trades,'plans':plans,'skipped':skipped,'valuation_events':valuation_events,
                 'cash_events':[dict(r) for r in ledger.db.execute('SELECT * FROM cash_events ORDER BY day')],
                 'stock_events':[dict(r) for r in ledger.db.execute('SELECT * FROM stock_events ORDER BY ex_date,reference')],
                 'metrics':metrics(curve,trades,initial_cash),
-                'assumptions':{'freeze_policy':freeze_policy,'max_holdings':max_holdings,'max_position':cfg['paper_max_position'],
+                'assumptions':{'freeze_policy':freeze_policy,'suspension_valuation':'verified_full_day_prior_close',
+                               'max_holdings':max_holdings,'max_position':cfg['paper_max_position'],
                                'max_sector':cfg['paper_max_sector'],'cash_reserve':'0.10','fee_config':fee_cfg,
                                'signal_timing':'收盘后生成目标，仅下一交易日开盘按限价与不利滑点尝试；不成交不事后追单',
                                'tax_note':'固定卖出印花税至少 0.1% 作为成本压力假设，不是逐日历史税率；现金分红税前，未扣个人股息税；佣金为估计综合费用',
