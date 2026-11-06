@@ -75,6 +75,16 @@ class EntryDiagnosticsTests(unittest.TestCase):
             'candidate_months': {'months': 0, 'empty': 0, 'total_candidates': 0},
         })
 
+    def test_unused_conflicts_count_active_and_retired_without_affecting_funnel(self):
+        warning={'period':'20240930','field':'total_share'}
+        active=assessment(symbol='601006.SH',data_warnings=[warning])
+        retired=assessment(symbol='601006.SH',active=False,data_warnings=[warning,{'period':'20250331','field':'total_share'}])
+        result=entry_diagnostics([{'assessments':[active]},{'assessments':[retired]}],{})
+        self.assertEqual(result['unused_share_conflicts'],[
+            {'symbol':'601006.SH','period':'20240930','field':'total_share','count':2,'active_count':1},
+            {'symbol':'601006.SH','period':'20250331','field':'total_share','count':1,'active_count':0}])
+        self.assertEqual(result['entry_funnel'][-1]['count'],1)
+
 
 if __name__ == '__main__':
     unittest.main()

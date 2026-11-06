@@ -16,26 +16,41 @@ def disclosed_date(row):
     return max(date_key(day) for day in dates) if dates else "99999999"
 
 
-def statements(rows, as_of):
-    selected = {}
+def statements(rows, as_of, *, quarterly_share_conflicts=None):
+    versions = {}
     for row in rows:
         if disclosed_date(row) > as_of or row.get("end_date", "99999999") > as_of:
             continue
         if "report_type" in row and str(row["report_type"]) not in {"1", "4"}:
             continue
         period = date_key(row["end_date"])
-        old = selected.get(period)
-        if old and disclosed_date(old) == disclosed_date(row):
-            if str(old.get("report_type")) != str(row.get("report_type")) and {str(old.get("report_type")),str(row.get("report_type"))} == {"1","4"}:
-                selected[period] = row if str(row["report_type"]) == "4" else old
-                continue
-            conflicts = [key for key,value in row.items() if old.get(key) is not None and value is not None and old[key] != value]
-            if conflicts:
-                raise AppError(f"{period} 同期财报版本冲突（{', '.join(sorted(conflicts))}），需核对原文。")
-            selected[period] = {**old, **{k:v for k,v in row.items() if v is not None}}
-            continue
-        if not old or disclosed_date(row) > disclosed_date(old):
-            selected[period] = row
+        rank = (disclosed_date(row), str(row.get('report_type')) == '4')
+        old = versions.get(period)
+        if old is None or rank > old[0]:
+            versions[period] = (rank, [row])
+        elif rank == old[0]:
+            old[1].append(row)
+    selected = {}
+    for period, (rank, candidates) in sorted(versions.items()):
+        candidates = sorted(candidates, key=lambda row: json.dumps(row, sort_keys=True))
+        merged, conflicts = {}, {}
+        for key in sorted({key for row in candidates for key in row}):
+            values = []
+            for row in candidates:
+                value = row.get(key)
+                if value is not None and value not in values:
+                    values.append(value)
+            merged[key] = values[0] if len(values) == 1 else None
+            if len(values) > 1:
+                conflicts[key] = sorted(values, key=lambda value: json.dumps(value, sort_keys=True))
+        # Quarterly balance shares are unused; never select either conflicting value.
+        if quarterly_share_conflicts is not None and not period.endswith('1231') and 'total_share' in conflicts:
+            quarterly_share_conflicts.append({'api':'balancesheet','period':period,'ann_date':rank[0],
+                'field':'total_share','values':conflicts.pop('total_share'),
+                'originals':[dict(row) for row in candidates]})
+        if conflicts:
+            raise AppError(f"{period} 同期财报版本冲突（{', '.join(sorted(conflicts))}），需核对原文。")
+        selected[period] = merged
     return selected
 
 
@@ -190,7 +205,7 @@ def summarize(dossier, basic, quote):
            "industry": basic.get("industry") or "待核实", "as_of": as_of,
            "price": quote.get("close"), "historic_yield_pct": quote.get("dv_ttm"),
            "share_count": str(dec(quote["total_share"]) * 10000) if quote.get("total_share") else None,
-           "status": "待核实", "issues": list(dossier["errors"].values()), "annual": [],
+           "status": "待核实", "issues": list(dossier["errors"].values()), "data_warnings": [], "annual": [],
            "latest_period": None, "scenarios": [], "gate": False}
     if not basic or not quote or quote.get("trade_date") != as_of:
         row["issues"].append("身份或当日收盘行情缺失，暂停价格结论")
@@ -200,7 +215,8 @@ def summarize(dossier, basic, quote):
     try:
         def checked(api):
             try:
-                return statements(dossier['data'].get(api,[]),as_of)
+                return statements(dossier['data'].get(api,[]),as_of,
+                                  quarterly_share_conflicts=row['data_warnings'] if api=='balancesheet' else None)
             except AppError as exc:
                 row['issues'].append(api+'：'+str(exc))
                 return {}
@@ -273,6 +289,8 @@ def summarize(dossier, basic, quote):
         # Fingerprint excludes changing prices, but invalidates assumptions after disclosures or share changes.
         evidence = {"income": inc, "cashflow": cf, "balancesheet": bs, "indicator": ind, "audit": audit,
                     "events": events, "shares": row["share_count"]}
+        if row['data_warnings']:
+            evidence['data_warnings'] = row['data_warnings']
         row["evidence_hash"] = hashlib.sha256(json.dumps(evidence, sort_keys=True).encode()).hexdigest()
         row["gate"] = not row["issues"] and bool(row["price"]) and bool(row["share_count"])
         if row['status'] != '排除' and any('为负' in issue for issue in row['issues']):

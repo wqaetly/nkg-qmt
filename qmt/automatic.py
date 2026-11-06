@@ -33,7 +33,8 @@ def dividend_assessment(row, dossier, rules):
         return stop('待数据核实','；'.join(row.get('issues',[])[:-1]) or '结构化数据未通过')
     try:
         data, day = dossier['data'], row['as_of']
-        inc, indicators, balance = [statements(data[key],day) for key in ('income','fina_indicator','balancesheet')]
+        inc, indicators, balance = [statements(data[key],day,quarterly_share_conflicts=[] if key=='balancesheet' else None)
+                                   for key in ('income','fina_indicator','balancesheet')]
         annual = row['annual'][:5]
         year = int(annual[0]['period'][:4])
         if [x['period'] for x in annual] != [f'{year-i}1231' for i in range(5)]:

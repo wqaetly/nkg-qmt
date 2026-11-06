@@ -7,7 +7,8 @@ from pathlib import Path
 
 from qmt.config import ROOT, load_config
 from qmt.demo import create_demo
-from qmt.report import chart_panel, optional_report, percent, research_panel, comparison_chart, period_diagnostics_panel, coverage_panel, automatic_panel, experiment_history_panel
+from qmt.ledger import Ledger
+from qmt.report import chart_panel, optional_report, percent, research_panel, comparison_chart, period_diagnostics_panel, coverage_panel, automatic_panel, experiment_history_panel, data_warnings_panel, render
 
 
 class ResearchUiTests(unittest.TestCase):
@@ -144,6 +145,50 @@ class ResearchUiTests(unittest.TestCase):
         self.assertIn('https://example.com/report?a=1&amp;b=2',page)
         self.assertEqual(percent('not a number'),'—')
         self.assertEqual(percent('nan'),'—')
+
+    def test_unused_quarterly_share_warning_survives_detail_render_without_approval_or_value_changes(self):
+        warning={'api':'balancesheet','period':'20220930','ann_date':'20221028','field':'total_share',
+                 'values':['100000000','100000001','<script>原值</script>'],
+                 'originals':[{'total_share':'100000000','private_test_marker':'完整原始行不应直接展开'}]}
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace=Path(tmp);cfg=load_config();create_demo(workspace,cfg)
+            report=json.loads((workspace/'screen.json').read_text(encoding='utf-8'))
+            report['rows'][0]['data_warnings']=[warning]
+            before=json.dumps(report,ensure_ascii=False,sort_keys=True)
+            ledger=Ledger(workspace/'ledger.sqlite3',cfg)
+            try:
+                page=render(workspace,ledger,report).read_text(encoding='utf-8')
+            finally:
+                ledger.close()
+            self.assertEqual(page.count('class="data-warnings"'),1)
+            self.assertIn('报告期 20220930 · 公告日 20221028 · balancesheet.total_share',page)
+            self.assertIn('100000000 / 100000001 / &lt;script&gt;原值&lt;/script&gt;',page)
+            self.assertIn('未参与本次数值计算',page)
+            self.assertIn('尚未核对原文',page)
+            self.assertIn('年报股数及其他字段冲突仍按阻断处理',page)
+            self.assertNotIn('<script>原值</script>',page)
+            self.assertNotIn('完整原始行不应直接展开',page)
+            self.assertEqual(before,json.dumps(report,ensure_ascii=False,sort_keys=True))
+        self.assertEqual(data_warnings_panel([]),'')
+
+    def test_historical_unused_share_conflicts_preserve_counts_scope_and_unverified_status(self):
+        backtest={'diagnostics':{'evaluations':80,'unused_share_conflicts':[
+            {'symbol':'600001.SH','period':'20220930','field':'total_share','count':12,'active_count':9},
+            {'symbol':'600001.SH','period':'20230630','field':'total_share','count':3,'active_count':0},
+            {'symbol':'<script>代码</script>','period':'20230930','field':'<img>','count':1,'active_count':1}]}}
+        before=json.dumps(backtest,sort_keys=True)
+        page=research_panel(self.research(),backtest)
+        self.assertIn('id="unused-share-conflicts"',page)
+        self.assertIn('600001.SH</td><td>20220930</td><td>total_share</td><td>12</td><td>9',page)
+        self.assertIn('600001.SH</td><td>20230630</td><td>total_share</td><td>3</td><td>0',page)
+        self.assertIn('同股不同报告期可分别计数',page)
+        self.assertIn('不能当作独立公司数或成交笔数',page)
+        self.assertIn('原文尚未核实',page)
+        self.assertNotIn('<script>代码</script>',page)
+        self.assertNotIn('<img>',page)
+        self.assertEqual(before,json.dumps(backtest,sort_keys=True))
+        for diagnostics in ({'evaluations':80},{'unused_share_conflicts':[]}):
+            self.assertNotIn('id="unused-share-conflicts"',research_panel(self.research(),{'diagnostics':diagnostics}))
 
     def test_entry_funnel_displays_provided_counts_with_distinct_scope_and_units(self):
         stages=[('当期候选',940),('财务通过',589),('估值通过',208),('流动性通过',199),('基础候选通过',198),('全部买入条件通过',41)]

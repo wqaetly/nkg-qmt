@@ -119,6 +119,14 @@ def period_diagnostics_panel(data):
     {summary if has_rolling else ''}{'<p class="muted">滚动三年统计汇总同一条历史资产曲线的不同窗口。重叠窗口不是独立样本，正收益占比不是未来盈利概率。</p>' if has_rolling else ''}</details>'''
 
 
+def data_warnings_panel(warnings):
+    if not warnings:
+        return ''
+    items=''.join(f'<li class="analysis">报告期 {esc(item.get("period"))} · 公告日 {esc(item.get("ann_date"))} · {esc(item.get("api"))}.{esc(item.get("field"))}<br>接口原始值：{esc(" / ".join(str(value) for value in item.get("values",[])))}</li>' for item in warnings)
+    return f'''<div class="data-warnings"><p><strong>未参与计算的股数冲突 · 原文待核实</strong></p><ul>{items}</ul>
+    <p class="muted">该季度股数字段未参与本次数值计算；这里只记录接口差异，尚未核对原文。年报股数及其他字段冲突仍按阻断处理。</p></div>'''
+
+
 def research_panel(research, backtest, chart_symbols=(), history=''):
     if not research and not backtest and not history:
         return ''
@@ -160,6 +168,13 @@ def research_panel(research, backtest, chart_symbols=(), history=''):
         months=diagnostics.get('candidate_months',{})
         if months:
             funnel+=f'<p id="candidate-months" class="muted">月度评估 {esc(months.get("months"))} 次，其中 {esc(months.get("empty"))} 次无买入候选；合格候选累计 {esc(months.get("total_candidates"))} 个公司·月。</p>'
+        unused=diagnostics.get('unused_share_conflicts',[])
+        conflicts=''
+        if unused:
+            conflicts='<div id="unused-share-conflicts"><p><strong>未参与计算的季度股数冲突 · 原文待核实</strong></p>'+table(
+                ['公司','冲突报告期','字段','评估月次数','其中当期候选月次数'],
+                [[item.get(key) for key in ('symbol','period','field','count','active_count')] for item in unused])
+            conflicts+='<p class="muted">每行按公司、冲突报告期、评估月去重；同股不同报告期可分别计数，不能当作独立公司数或成交笔数。这些季度股数字段未参与本次数值计算，原文尚未核实；年报股数及其他字段冲突仍按阻断处理。</p></div>'
         rebalances=selection.get('rebalances',[])
         rejected=Counter(item.get('reason','未记录原因') for item in (selection.get('rejected',[]) if not rebalances else [item for pool in rebalances for item in pool.get('rejected',[])]))
         reason_rows=[['建池淘汰（公司 / 建池时点）' if rebalances else '建池淘汰（公司）',reason,count] for reason,count in rejected.most_common()]
@@ -174,7 +189,7 @@ def research_panel(research, backtest, chart_symbols=(), history=''):
                 max(0,pool['candidate_count']-len(pool.get('symbols',[]))) if isinstance(pool.get('candidate_count'),int) else None] for pool in rebalances])
             pool_table+='<p class="muted">未入池候选含条件不满足或排序未选中，不等于财务不合格；年度淘汰原因按公司 / 建池时点计数，同一公司可能重复出现。</p>'
         diagnoses=f'''<details class="research-results" id="research-diagnostics"><summary>建池淘汰、筛选与未成交原因</summary><p>{esc(selection_note)}</p><p>共 {esc(diagnostics.get('evaluations'))} 次公司 / 时点评估。{esc(states)}</p>
-        {funnel}{pool_table}<p class="muted">建池淘汰按{'公司 / 建池时点' if rebalances else '公司'}计数，筛选按公司 / 时点计数，执行跳过按事件计数，三者不能相加。数据不足、未达到价格要求和资金不够买一手是不同原因；不能为了产生交易把它们视为通过。</p>{reasons}</details>'''
+        {funnel}{pool_table}{conflicts}<p class="muted">建池淘汰按{'公司 / 建池时点' if rebalances else '公司'}计数，筛选按公司 / 时点计数，执行跳过按事件计数，三者不能相加。数据不足、未达到价格要求和资金不够买一手是不同原因；不能为了产生交易把它们视为通过。</p>{reasons}</details>'''
     limitations=research.get('limitations',[])+backtest.get('limitations',[])
     notes=''.join(f'<li>{esc(note)}</li>' for note in dict.fromkeys(limitations) if note!=backtest.get('protocol',{}).get('monthly_targets'))
     backtest_state=backtest.get('status') or research.get('backtest',{}).get('status') or '待运行'
@@ -340,7 +355,7 @@ def render(workspace, ledger, report, status=None):
         <span class="quote">¥ {number(row.get('price'))}<small>{esc(row.get('as_of'))} 收盘</small></span>
         <span class="yield">{number(row.get('historic_yield_pct'))}%<small>历史 TTM 股息率</small></span>
         <span class="pill {'danger' if state=='排除' else 'ready' if state=='可进一步评估' else ''}">{esc(state)}</span><span class="expand">＋</span></summary>
-        <div class="detail-body"><button type="button" class="chart-link" data-chart-symbol="{esc(row['symbol'])}">查看 K 线与模拟操作</button><h3>三项筛选 · {esc(assessment.get('state','尚未模拟评估'))}</h3>{gates}<p>{esc(lot_note)}</p><div class="detail-grid"><section><h3>核查结论</h3><ul>{issues}</ul><p class="muted">最新报告期 {esc(row.get('latest_period'))} · 取数截至 {esc(row.get('as_of'))}</p></section>
+        <div class="detail-body"><button type="button" class="chart-link" data-chart-symbol="{esc(row['symbol'])}">查看 K 线与模拟操作</button><h3>三项筛选 · {esc(assessment.get('state','尚未模拟评估'))}</h3>{gates}<p>{esc(lot_note)}</p><div class="detail-grid"><section><h3>核查结论</h3><ul>{issues}</ul>{data_warnings_panel(row.get('data_warnings',[]))}<p class="muted">最新报告期 {esc(row.get('latest_period'))} · 取数截至 {esc(row.get('as_of'))}</p></section>
         <section><h3>下一步</h3><p>{esc(row.get('review_note','补充原始公告与情景假设后再评估。'))}</p><p class="muted">研究确认有效期由配置控制；新披露或股本变化将使旧确认失效。不会因价格下跌自动加仓。</p></section></div>
         <h3>近年分红与支付能力</h3>{annual}{corrections}<p class="muted">金额按原始披露口径；同年度中期与年度派息合计，不含未实施预案。只剔除有原文依据的已知特别分红，其余记录仍需核实。DPS 未统一历史股本口径，不能直接比较增速；空白不是零。金融企业不计算工业 FCF。</p>
         <h3>三种情景 × 股息率参考价</h3>{matrix}
