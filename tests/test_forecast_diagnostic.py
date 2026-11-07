@@ -149,7 +149,7 @@ class ForecastDiagnosticTests(unittest.TestCase):
             with patch('qmt.forecast_diagnostic.run_diagnostic', return_value={'coverage': {'predictions': 0}}) as run:
                 with redirect_stdout(io.StringIO()):
                     self.assertEqual(main(['--workspace', temp, 'forecast-check']), 0)
-                run.assert_called_once_with(Path(temp).resolve(), 'historical-dividend-v26-annual-all-rank')
+                run.assert_called_once_with(Path(temp).resolve(), 'historical-dividend-v27-annual-all-rank')
             self.assertFalse((Path(temp) / 'ledger.sqlite3').exists())
 
 
