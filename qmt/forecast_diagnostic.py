@@ -9,7 +9,7 @@ from urllib.parse import urlparse
 
 from .automatic import dividend_assessment
 from .config import ROOT, AppError, atomic_json, date_key, dec
-from .experiment import protocol
+from .experiment import protocol, validate_experiment
 from .research import implemented_dividends, normalize_disclosed_dividends, summarize
 
 
@@ -30,24 +30,40 @@ LIMITATIONS = [
 ]
 
 
-def forecast(stock, dossier, origin, rules):
+def forecast(stock, dossier, origin, rules, *, dividend_policy='implemented_only', cashflow_policy='latest_and_three_year'):
     """Use only origin-dated inputs; outcome data is deliberately not an argument."""
-    row = summarize({**dossier, 'as_of': origin}, stock, stock['selection_quote'])
+    row = summarize({**dossier, 'as_of': origin}, stock, stock['selection_quote'], dividend_policy=dividend_policy,
+                    cashflow_policy=cashflow_policy)
     expected = stock['selection_quality']['evidence_hash']
     if row.get('evidence_hash') != expected:
         raise AppError(f"{origin} {stock['symbol']} 财务证据与冻结候选不一致。")
     estimates = {}
+    cash_decision = {}
     for method in ('conservative_minimum', 'ttm'):
-        assessment = dividend_assessment(row, {**dossier, 'as_of': origin}, rules, earnings_basis=method)
+        assessment = dividend_assessment(row, {**dossier, 'as_of': origin}, rules,
+                                         earnings_basis=method, dividend_policy=dividend_policy,cashflow_policy=cashflow_policy)
         if assessment['state'] not in ('等待价格', '满足价格条件'):
             raise AppError(f"{origin} {stock['symbol']} 无法重现已冻结财务资格：{assessment['reason']}")
         estimates[method] = str(dec(assessment['estimated_eps']) * dec(assessment['payout']))
+        if method=='conservative_minimum':
+            cash_decision=assessment.get('cash_decision',{})
     annual = row['annual'][0]
-    estimates['last_annual'] = str(dec(annual['estimated_ordinary_cash']) / dec(row['share_count'], positive=True))
+    baseline = annual
+    if dividend_policy=='approved_annual_cash':
+        implemented = summarize({**dossier, 'as_of': origin}, stock, stock['selection_quote'])
+        baseline = next((item for item in implemented['annual'] if item.get('implemented_dps') is not None
+                         and dec(item['implemented_dps'])>0 and item.get('estimated_ordinary_cash') is not None
+                         and (item['period']<annual['period'] or cash_decision.get('stage')=='implemented')),None)
+        if baseline is None:
+            raise AppError(f'{origin} {stock["symbol"]} 缺少已实施年度现金基线，未以已批准方案替代。')
+    estimates['last_annual'] = str(dec(baseline['estimated_ordinary_cash']) / dec(row['share_count'], positive=True))
     return {'symbol': stock['symbol'], 'name': stock['name'], 'origin': origin,
             'target_year': int(origin[:4]) + 1, 'price': str(dec(row['price'], positive=True)),
             'known_fiscal_year': int(annual['period'][:4]), 'evidence_hash': expected,
-            'estimates_dps': estimates}
+            'estimates_dps': estimates,
+            **({'cashflow_policy':cashflow_policy} if cashflow_policy=='three_year_coverage' else {}),
+            **({'dividend_policy':dividend_policy,'last_annual_fiscal_year':int(baseline['period'][:4])}
+               if dividend_policy=='approved_annual_cash' else {})}
 
 
 def observed_label(raw, origin, target_year, as_of, *, symbol=None):
@@ -156,12 +172,47 @@ def run_diagnostic(workspace, version):
     saved = read(base / 'protocol.json')
     if saved.get('version') != version:
         raise AppError('源协议版本与实验目录名不一致。')
+    dividend_policy=saved.get('dividend_policy','implemented_only')
+    if dividend_policy not in ('implemented_only','approved_annual_cash'):
+        raise AppError('源协议股息估计规则无法识别，未回退为旧规则。')
+    cashflow_policy=saved.get('cashflow_policy','latest_and_three_year')
+    if cashflow_policy not in ('latest_and_three_year','three_year_coverage'):
+        raise AppError('源协议现金流覆盖规则无法识别。')
+    if cashflow_policy=='three_year_coverage' and dividend_policy!='approved_annual_cash':
+        raise AppError('三年累计现金覆盖预测须匹配已批准年度现金实验。')
+    capital_policy=saved.get('capital_policy','fixed_amount')
+    if capital_policy not in ('fixed_amount','equity_ratio'):
+        raise AppError('源协议仓位额度规则无法识别。')
+    if capital_policy=='equity_ratio' and cashflow_policy!='three_year_coverage':
+        raise AppError('净值比例额度预测来源须匹配三年累计现金覆盖实验。')
+    valuation_policy=saved.get('valuation_policy','historical_gate')
+    if valuation_policy not in ('historical_gate','historical_context'):
+        raise AppError('源协议估值规则无法识别。')
+    exit_policy=saved.get('exit_policy','review_freeze')
+    if exit_policy not in ('review_freeze','known_failure_exit'):
+        raise AppError('源协议退出规则无法识别。')
+    rebalance_policy=saved.get('rebalance_policy','monthly_only')
+    if rebalance_policy not in ('monthly_only','after_confirmed_sale'):
+        raise AppError('源协议补单规则无法识别。')
+    if valuation_policy=='historical_context' or exit_policy=='known_failure_exit' or rebalance_policy=='after_confirmed_sale':
+        try:
+            validate_experiment(saved)
+        except (KeyError,TypeError):
+            raise AppError('实验预测的冻结协议不完整。') from None
+    if (base/'summary.json').exists() or exit_policy=='known_failure_exit':
+        summary=read(base/'summary.json')
+        summary_protocol=summary.get('protocol')
+        if (not isinstance(summary_protocol,dict) or summary_protocol.get('version')!=version
+                or summary_protocol.get('exit_policy','review_freeze')!=exit_policy):
+            raise AppError('预测来源的登记协议与实验摘要退出规则不一致。')
+        if summary_protocol.get('rebalance_policy','monthly_only')!=rebalance_policy:
+            raise AppError('预测来源的登记协议与实验摘要补单规则不一致。')
     if (saved.get('pool_refresh') != 'year_end' or saved.get('cohort_limit', 20) is not None
             or saved.get('earnings_basis') != 'conservative_minimum'):
         raise AppError('本诊断要求完整年度财务候选的保守口径实验，不能使用截断名单或按另一口径挑选样本。')
     if not isinstance(saved.get('account_config'), dict) or not isinstance(saved.get('rules'), dict):
         raise AppError('源协议缺少有效账户配置或冻结规则。')
-    if saved.get('engine_sha256') != protocol(saved['account_config'])['engine_sha256']:
+    if saved.get('engine_sha256') != protocol(saved['account_config'],saved)['engine_sha256']:
         raise AppError('当前计算引擎与源实验不一致；不能把重新计算冒充旧版冻结预测。')
     as_of = date_key(saved['replay_end'])
     parent = read(base / 'cohort.json')
@@ -177,7 +228,8 @@ def run_diagnostic(workspace, version):
         if len(codes) != len(set(codes)) or codes != rebalance['symbols'] or cohort['selected_on'] != origin:
             raise AppError('年度候选与父实验不一致或存在重复。')
         for stock in cohort['stocks']:
-            rows.append(forecast(stock, financials[stock['symbol']], origin, saved['rules']))
+            rows.append(forecast(stock, financials[stock['symbol']], origin, saved['rules'],dividend_policy=dividend_policy,
+                                 cashflow_policy=cashflow_policy))
     # Freeze the prediction digest before loading outcome dossiers; future labels cannot select candidates.
     forecast_hash = hashlib.sha256(json.dumps(rows, sort_keys=True).encode()).hexdigest()
     outcomes = read(base / 'financials.json')
@@ -187,6 +239,8 @@ def run_diagnostic(workspace, version):
     scored = sum(y['proxy_scored'] for y in by_year)
     verified = [row for row in rows if row['label']['state'] == 'verified_zero_cash']
     result = {'version': 'dividend-forecast-v1', 'status': 'diagnostic', 'source_version': version,
+              'source_engine_sha256':saved['engine_sha256'],'cashflow_policy':cashflow_policy,'capital_policy':capital_policy,
+              'valuation_policy':valuation_policy,
               'outcome_as_of': as_of, 'horizon': '固定历史年末原点，估计下一完整财政年度归属的每股现金分红。',
               'methods': METHODS, 'forecast_sha256': forecast_hash, 'input_sha256': hashes,
               'source_sha256': {name: hashlib.sha256((ROOT / name).read_bytes()).hexdigest() for name in
@@ -194,5 +248,20 @@ def run_diagnostic(workspace, version):
               'coverage': {'predictions': len(rows), 'proxy_scored': scored, 'verified_ordinary': len(verified),
                            'verified_zero': len(verified), 'pending': len(rows) - scored - len(verified)},
               'by_year': by_year, 'rows': rows, 'verified_zero_cases': verified, 'limitations': LIMITATIONS}
+    if dividend_policy=='approved_annual_cash':
+        result.update(version='dividend-forecast-v1-approved-cash',dividend_policy=dividend_policy,
+            methods={**METHODS,'last_annual':'最近已实施年度延续'},
+            limitations=[note for note in LIMITATIONS if not note.startswith('最近已知年度延续')]+[
+                '两种盈利估计均遵循冻结的已批准年度现金规则；批准承诺仅用于前瞻估计，不是实际到账。',
+                '最近已实施年度延续只使用原点当时已取得正现金实施公告的年度普通现金估算；基线财政年度逐条列出，不以批准未实施方案替代。'])
+    if cashflow_policy=='three_year_coverage':
+        result['limitations']=[*result['limitations'],
+            '候选按冻结的三年累计现金覆盖规则重现；单年自由现金流非正不单独否决，但累计覆盖不能证明当前现金足以分配。']
+    if exit_policy=='known_failure_exit':
+        result['exit_policy']=exit_policy
+        result['limitations']=[*result['limitations'],
+            '来源实验仅在月末资料完整校验后允许已知三年累计FCF或短债覆盖失败持仓按规则退出，行业变更仍冻结；本诊断沿用年度候选及原预测公式，不模拟退出或成交。']
+    if rebalance_policy=='after_confirmed_sale':
+        result['rebalance_policy']=rebalance_policy
     atomic_json(workspace / 'forecast-diagnostic.json', result)
     return result

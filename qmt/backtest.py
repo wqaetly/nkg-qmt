@@ -226,7 +226,8 @@ def suspension_values(held, day, sessions, bars, dividends, last_real):
     return values
 
 
-def simulate(data, signals, cfg, initial_cash=None, max_holdings=5, *, freeze_policy='portfolio'):
+def simulate(data, signals, cfg, initial_cash=None, max_holdings=5, *, freeze_policy='portfolio', capital_policy='fixed_amount',
+             rebalance_policy='monthly_only'):
     """Replay raw daily bars and supplied ranked close-of-day candidate snapshots.
 
     data: sessions, bars[symbol][day] (open/high/low/close/vol/up/down),
@@ -245,19 +246,28 @@ def simulate(data, signals, cfg, initial_cash=None, max_holdings=5, *, freeze_po
     valuation, preserve shares and expire execution-day orders without fills.
     Other missing bars and unverified or fractional held distributions halt.
     """
+    if capital_policy not in ('fixed_amount','equity_ratio'):
+        raise AppError('未知仓位额度规则。')
+    if rebalance_policy not in ('monthly_only','after_confirmed_sale'):
+        raise AppError('未知补单调仓规则。')
+    if 'paper_capital_policy' in cfg and cfg['paper_capital_policy']!=capital_policy:
+        raise AppError('账户额度配置与回放政策不一致。')
     initial_cash=cfg['paper_cash'] if initial_cash is None else initial_cash
     sessions,bars,dividends,snapshots = _inputs(data,signals,max_holdings,freeze_policy=freeze_policy)
     fee_cfg = {**cfg,'sell_stamp_rate':str(max(dec(cfg['sell_stamp_rate']),Decimal('.001')))}
+    if capital_policy=='equity_ratio':
+        fee_cfg['paper_capital_policy']=capital_policy
     ledger = Ledger(':memory:',fee_cfg)
     try:
         ledger.initialize('paper',initial_cash,cfg['paper_max_position'],cfg['paper_max_sector'],sessions[0])
+        allocation_account=ledger.account('paper')
         ledger.db.execute("INSERT INTO metadata VALUES('automatic-rules','historical-replay')")
         ledger.db.execute("INSERT INTO metadata VALUES('historical-sessions',?)",(json.dumps(sessions),))
         ledger.db.commit()
         session_index = {day:i for i,day in enumerate(sessions)}
         event_dates = {e[key] for events in dividends.values() for e in events for key in ('ex_date','pay_date')
                        if e.get(key) and sessions[0]<=e[key]<=sessions[-1]}
-        curve = []; skipped = []; valuation_events = []; last_real = {}
+        curve = []; skipped = []; valuation_events = []; last_real = {}; after_sale = None
         for day in sorted(set(sessions)|event_dates):
             active_events = {s:[e for e in events if day in (e['ex_date'],e['pay_date'])]
                              for s,events in dividends.items()}
@@ -282,6 +292,69 @@ def simulate(data, signals, cfg, initial_cash=None, max_holdings=5, *, freeze_po
                                     for symbol,value in sorted(valuation_only.items()))
             exposure = (equity-dec(mark['cash'])-dec(mark['receivable']))/equity
             curve.append({**mark,'exposure':float(exposure),'positions':dict(account['positions'])})
+            if after_sale is not None and day==after_sale['decision_day']:
+                batch,after_sale = after_sale,None  # One close-of-day opportunity, never roll an intent forward.
+                held = ledger.positions('paper')
+                old_snapshot = snapshots[batch['origin']]
+                blocked = set(old_snapshot['freeze'] if freeze_policy=='portfolio' else old_snapshot['portfolio_freeze'])&set(held)
+                reason = ''
+                if day in snapshots:
+                    reason = '已有更新信号，取消旧目标'
+                elif session_index[day]==len(sessions)-1:
+                    reason = '没有下一交易日'
+                elif not any(ledger.db.execute('SELECT 1 FROM fills WHERE plan_id=? AND trade_date=? AND quantity>0',
+                                              (pid,day)).fetchone() for pid in batch['sell_ids']):
+                    reason = '原月末卖单没有真实成交'
+                elif blocked:
+                    reason = '原信号的实际持仓仍触发全组合资料冻结'
+                limits = ledger.position_limits('paper',equity)
+                budget = min(limits['max_position'],equity*Decimal('.9')/max_holdings)
+                for intent in batch['buys']:
+                    code = intent['symbol']; original_price = intent['price']; cancel = reason
+                    if not cancel and any(batch['origin']<e['ex_date']<=day and dec(e['stk_div'])>0
+                                          for e in dividends.get(code,[])):
+                        cancel = '等待期送转除权改变原目标股数口径'
+                    if not cancel and code not in prices:
+                        cancel = '补单决策日缺少真实可交易收盘价'
+                    if not cancel and dec(prices[code]['close'])>original_price:
+                        cancel = '补单决策日收盘价超过原买入限价'
+                    if cancel:
+                        skipped.append({'day':day,'symbol':code,'origin_signal_date':batch['origin'],
+                                        'reason':'卖出后补买取消：'+cancel})
+                        continue
+                    pending_buys = [p for p in ledger.open_plans('paper') if p['side']=='buy']
+                    reserved_codes = set(held)|{p['symbol'] for p in pending_buys}
+                    values = {s:dec(valuation_only[s]['market_value']) if s in valuation_only else dec(prices[s]['close'])*q
+                              for s,q in held.items()}
+                    reserved = Decimal(0)
+                    for plan in pending_buys:
+                        remaining = plan['quantity']-plan['filled']
+                        amount = dec(plan['limit_price'])*remaining
+                        values[plan['symbol']] = values.get(plan['symbol'],Decimal(0))+amount
+                        reserved += amount+ledger.estimated_fee(plan['limit_price'],remaining,'buy')
+                    sector_value = sum((value for s,value in values.items() if data['industries'][s]==data['industries'][code]),Decimal(0))
+                    available = min(budget-values.get(code,Decimal(0)),limits['max_position']-values.get(code,Decimal(0)),limits['max_sector']-sector_value)
+                    quantity = min(rebalance_quantity(held.get(code,0),intent['target']),max(0,int(available/(original_price*100))*100))
+                    cash = ledger.cash('paper')-reserved-equity*Decimal('.1')
+                    while quantity>0 and original_price*quantity+ledger.estimated_fee(original_price,quantity,'buy')>cash:
+                        quantity-=100
+                    if code not in reserved_codes and len(reserved_codes)>=max_holdings:
+                        cancel = '实际持仓及待买仍占满数量上限'
+                    elif quantity<=0:
+                        cancel = '当日目标、单股、行业或现金额度不足一手'
+                    else:
+                        price = min(original_price,dec(prices[code]['close'])*Decimal('1.01')).quantize(Decimal('.01'),rounding=ROUND_FLOOR)
+                        row = {'symbol':code,'industry':data['industries'][code],'automatic_signal':True,
+                               'review_hash':hashlib.sha256(json.dumps(old_snapshot,sort_keys=True).encode()).hexdigest()}
+                        try:
+                            ledger.create_plan('paper',row,day,sessions[session_index[day]+1],quantity,price,'buy',
+                                               f"原月末信号 {batch['origin']} 卖出成交后一次补买",prices,data['industries'],
+                                               valuation_only=valuation_only or None)
+                        except AppError as exc:
+                            cancel = str(exc)
+                    if cancel:
+                        skipped.append({'day':day,'symbol':code,'origin_signal_date':batch['origin'],
+                                        'reason':'卖出后补买取消：'+cancel})
             if day not in snapshots or session_index[day]==len(sessions)-1:
                 continue
             next_day = sessions[session_index[day]+1]
@@ -294,12 +367,15 @@ def simulate(data, signals, cfg, initial_cash=None, max_holdings=5, *, freeze_po
                 sector=data['industries'][code]
                 value=dec(valuation_only[code]['market_value']) if code in valuation_only else dec(prices[code]['close'])*held[code]
                 sector_values[sector]=sector_values.get(sector,Decimal(0))+value
-            budget = min(dec(cfg['paper_max_position']),equity*Decimal('.9')/max_holdings)
+            # Legacy replay budgets used raw config amounts before account rounding.
+            limits=(ledger.position_limits('paper',equity) if capital_policy=='equity_ratio' else
+                    {'max_position':dec(cfg['paper_max_position']),'max_sector':dec(cfg['paper_max_sector'])})
+            budget = min(limits['max_position'],equity*Decimal('.9')/max_holdings)
             candidate_codes = {c['symbol'] for c in snapshots[day]['candidates']}
             for code in sorted((set(snapshots[day].get('retain',[]))&set(held))-candidate_codes-frozen):
                 close = dec(prices[code]['close'])
                 sector = data['industries'][code]
-                available = min(budget,dec(cfg['paper_max_sector'])-sector_values.get(sector,Decimal(0)))
+                available = min(budget,limits['max_sector']-sector_values.get(sector,Decimal(0)))
                 quantity = min(held[code],max(0,int(available/(close*100))*100))
                 if quantity:
                     targets[code] = quantity
@@ -320,13 +396,14 @@ def simulate(data, signals, cfg, initial_cash=None, max_holdings=5, *, freeze_po
                     continue
                 price = min(close*Decimal('1.01'),reference).quantize(Decimal('.01'),rounding=ROUND_FLOOR)
                 sector = data['industries'][code]
-                available = min(budget,dec(cfg['paper_max_sector'])-sector_values.get(sector,Decimal(0)))
+                available = min(budget,limits['max_sector']-sector_values.get(sector,Decimal(0)))
                 quantity = max(0,int(available/(price*100))*100)
                 if not quantity:
                     skipped.append({'day':day,'symbol':code,'reason':'目标预算不足一手或行业额度不足'})
                     continue
                 targets[code] = quantity;targets_price[code] = price
                 sector_values[sector] = sector_values.get(sector,Decimal(0))+price*quantity
+            deferred_buys = []; sell_ids = []
             for side in ('sell','buy'):
                 for code in sorted(set(held)|set(targets)):
                     difference = rebalance_quantity(held.get(code,0),targets.get(code,0))
@@ -343,6 +420,8 @@ def simulate(data, signals, cfg, initial_cash=None, max_holdings=5, *, freeze_po
                         reserved_codes = set(held)|{p['symbol'] for p in ledger.open_plans('paper') if p['side']=='buy'}
                         if code not in reserved_codes and len(reserved_codes)>=max_holdings:
                             skipped.append({'day':day,'symbol':code,'reason':'当前持仓及待买股票已达数量上限，不能预支卖出'})
+                            if rebalance_policy=='after_confirmed_sale':
+                                deferred_buys.append({'symbol':code,'target':targets[code],'price':price})
                             continue
                         reserved = sum((dec(p['limit_price'])*p['quantity']+ledger.estimated_fee(p['limit_price'],p['quantity'],'buy')
                                         for p in ledger.open_plans('paper') if p['side']=='buy'),Decimal(0))
@@ -355,10 +434,14 @@ def simulate(data, signals, cfg, initial_cash=None, max_holdings=5, *, freeze_po
                     row = {'symbol':code,'industry':data['industries'][code],'automatic_signal':True,
                            'review_hash':hashlib.sha256(json.dumps(snapshots[day],sort_keys=True).encode()).hexdigest()}
                     try:
-                        ledger.create_plan('paper',row,day,next_day,quantity,price,side,'历史月度目标调整',prices,data['industries'],
-                                           valuation_only=valuation_only or None)
+                        pid = ledger.create_plan('paper',row,day,next_day,quantity,price,side,'历史月度目标调整',prices,data['industries'],
+                                                 valuation_only=valuation_only or None)
+                        if rebalance_policy=='after_confirmed_sale' and side=='sell':
+                            sell_ids.append(pid)
                     except AppError as exc:
                         skipped.append({'day':day,'symbol':code,'reason':str(exc)})
+            if deferred_buys:
+                after_sale = {'origin':day,'decision_day':next_day,'sell_ids':sell_ids,'buys':deferred_buys}
         trades = [dict(r) for r in ledger.db.execute("SELECT p.symbol,p.side,p.signal_date,f.* FROM fills f JOIN plans p ON p.id=f.plan_id ORDER BY f.id")]
         plans = [dict(r) for r in ledger.db.execute('SELECT * FROM plans ORDER BY id')]
         return {'start':sessions[0],'end':sessions[-1],'initial_cash':str(money(initial_cash)),
@@ -367,6 +450,13 @@ def simulate(data, signals, cfg, initial_cash=None, max_holdings=5, *, freeze_po
                 'stock_events':[dict(r) for r in ledger.db.execute('SELECT * FROM stock_events ORDER BY ex_date,reference')],
                 'metrics':metrics(curve,trades,initial_cash),
                 'assumptions':{'freeze_policy':freeze_policy,'suspension_valuation':'verified_full_day_prior_close',
+                               **({'rebalance_policy':rebalance_policy,
+                                   'rebalance_timing':'仅原月末因数量上限未创建的目标：原卖单下一交易日真实成交后收盘复核，再下一交易日一次补买；原目标股数和限价封顶，未成交不延期。沿原快照两交易日有效期，不重做每日财务、身份或行业审查；新快照优先取消旧补单。'}
+                                  if rebalance_policy=='after_confirmed_sale' else {}),
+                               **({'capital_policy':capital_policy,
+                                   'position_limit_ratio':str(dec(allocation_account['max_position'])/dec(allocation_account['initial_cash'])),
+                                   'sector_limit_ratio':str(dec(allocation_account['max_sector'])/dec(allocation_account['initial_cash']))}
+                                  if capital_policy=='equity_ratio' else {}),
                                'max_holdings':max_holdings,'max_position':cfg['paper_max_position'],
                                'max_sector':cfg['paper_max_sector'],'cash_reserve':'0.10','fee_config':fee_cfg,
                                'signal_timing':'收盘后生成目标，仅下一交易日开盘按限价与不利滑点尝试；不成交不事后追单',

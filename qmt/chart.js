@@ -29,7 +29,8 @@
     const previous=requested||select.value, codes=Object.keys(data.stocks);
     select.replaceChildren(); codes.forEach(code=>option(code,`${code} · ${data.names?.[code]||code}`,select));
     select.value=codes.includes(previous)?previous:(data.fills.find(fill=>codes.includes(fill.symbol))?.symbol||codes[0]||'');
-    context.textContent=historical ? `${run.label} · ${history.version} · ${labelDate(history.start)} 至 ${labelDate(history.end)} · 历史涉及 ${codes.length} 只` : `日常模拟 · 行情截至 ${daily.as_of||'—'} · ${codes.length} 只可选`;
+    context.textContent=historical ? `${run.id==='rank'?'历史主方案':run.label} · ${labelDate(history.start)} 至 ${labelDate(history.end)}` : `日常模拟 · 行情截至 ${daily.as_of||'—'}`;
+    document.getElementById('chart-provenance').textContent=historical ? `${run.label} · ${history.version} · 历史涉及 ${codes.length} 只` : `日常模拟 · ${codes.length} 只可选；与历史回放分开记录。`;
     document.getElementById('chart-reference-legend').hidden=historical;
     tradeOptions(); draw();
   }
@@ -52,12 +53,16 @@
     const bars=all.slice(first,first+count);
     host.replaceChildren(); host.onkeydown=null; tip.textContent = ''; explanation.replaceChildren();
     const note = document.createElement('p');
-    note.textContent = historical ? `历史回放记录 · 本股票 ${plans.length} 笔订单、${fills.length} 笔成交、${stockEvents.length} 笔送转；切换定位成交 / 送转可查看当时 K 线。` : assessment ? `${assessment.state}：${assessment.reason}。${data.notes[code] || ''}` : '无自动策略评估记录';
+    note.textContent = historical ? `本股票 ${plans.length} 笔订单、${fills.length} 笔成交、${stockEvents.length} 笔送转。` : assessment ? `${assessment.state}：${assessment.reason}。${data.notes[code] || ''}` : '无自动策略评估记录';
     if(target&&targetIndex<0) note.textContent+=' 所选操作日不在已取 K 线范围内，未补造行情。';
     explanation.appendChild(note);
     const orders = document.createElement('p');
     orders.textContent = plans.length ? plans.slice(-8).map(p => `#${p.id} ${p.side==='buy'?'买入':'卖出'} ${p.quantity} 股，限价 ${p.limit_price}，有效日 ${labelDate(p.execute_date)}，${({pending:'待模拟成交',partial:'部分成交',filled:'已模拟成交',expired:'失效未成交',closed:'已关闭'})[p.status] || p.status}`).join('；') : '该股票在所选来源尚无订单；图中不补画交易。';
-    explanation.appendChild(orders);
+    if(plans.length){
+      const details=document.createElement('details'); details.className='chart-orders';
+      const summary=document.createElement('summary'); summary.textContent=`订单明细 · 最近 ${Math.min(plans.length,8)} / ${plans.length} 笔`; details.appendChild(summary);
+      details.appendChild(orders); explanation.appendChild(details);
+    }else explanation.appendChild(orders);
     if(stockEvents.length) {
       const details=document.createElement('details'); details.className='stock-events';
       const summary=document.createElement('summary'); summary.textContent=`送转股数流水 · ${stockEvents.length} 笔`; details.appendChild(summary);
@@ -140,7 +145,7 @@
     const cross = el('line',{x1:0,x2:0,y1:top,y2:volBottom,stroke:'#587867','stroke-dasharray':'4 3',visibility:'hidden'},svg);
     const describe=i=>{
       const b=bars[i]; cross.setAttribute('x1',x(i));cross.setAttribute('x2',x(i));cross.setAttribute('visibility','visible');
-      const trades=fills.filter(f=>f.trade_date===b.day).map(f=>`模拟${f.side==='buy'?'买':'卖'} ${f.quantity} 股 @ ${f.price}`).join('；');
+      const trades=fills.filter(f=>f.trade_date===b.day).map(f=>`模拟${f.side==='buy'?'买':'卖'} ${f.quantity} 股 @ ${f.price}，费用 ${f.fee??'—'}`).join('；');
       const signals=plans.filter(p=>p.signal_date===b.day).map(p=>`信号 #${p.id} ${p.side==='buy'?'买':'卖'} ${p.quantity} 股，限价 ${p.limit_price}，仅 ${labelDate(p.execute_date)} 有效`).join('；');
       const events=stockEvents.filter(event=>event.ex_date===b.day).map(stockEventText).join('；');
       tip.textContent=`${labelDate(b.day)}　开 ${fmt(b.open)}　高 ${fmt(b.high)}　低 ${fmt(b.low)}　收 ${fmt(b.close)}　量 ${b.vol.toLocaleString()} 手${signals?' ｜ '+signals:''}${trades?' ｜ '+trades:''}${events?' ｜ '+events:''}`;

@@ -109,6 +109,656 @@
       "source_sha256": "b066aa12648e52dc0c2d8d980890ba6e61d6a857908dc9220bac3b634c6734f2",
       "pages": "1",
       "note": "2022-021公告明确公司股票继续停牌。非公告日按已公告持续停牌状态登记，逐日历史停牌记录作事实佐证；不把预计不超过10日当作既成期限，不使用4月29日复牌公告倒灌。可用性只核实到公开日，分钟级及盘前时点未核实；不提供可成交行情。"
+    },
+    {
+      "symbol": "600373.SH",
+      "day": "20231218",
+      "full_day": true,
+      "available_on": "20231216",
+      "source": "https://static.cninfo.com.cn/finalpage/2023-12-16/1218635071.PDF",
+      "source_sha256": "ee2a6da41b2e7d04de6282bba19b0299f0bd1d29785bfafbb16f3a928d283be1",
+      "pages": "1,2",
+      "note": "2023-049公告明确自2023年12月18日开市起停牌，披露重组预案后另行申请复牌。12月19日至20日按已公告持续停牌状态登记；不把预计不超过5个交易日当作确定期限，不使用12月21日复牌公告倒灌。可用性仅核实到公开日，分钟级时点未核实；仅供缺失行情的账面估值，不提供可成交行情。"
+    },
+    {
+      "symbol": "600373.SH",
+      "day": "20231219",
+      "full_day": true,
+      "available_on": "20231216",
+      "source": "https://static.cninfo.com.cn/finalpage/2023-12-16/1218635071.PDF",
+      "source_sha256": "ee2a6da41b2e7d04de6282bba19b0299f0bd1d29785bfafbb16f3a928d283be1",
+      "pages": "1,2",
+      "note": "2023-049公告明确自2023年12月18日开市起停牌，披露重组预案后另行申请复牌。12月19日至20日按已公告持续停牌状态登记；不把预计不超过5个交易日当作确定期限，不使用12月21日复牌公告倒灌。可用性仅核实到公开日，分钟级时点未核实；仅供缺失行情的账面估值，不提供可成交行情。"
+    },
+    {
+      "symbol": "600373.SH",
+      "day": "20231220",
+      "full_day": true,
+      "available_on": "20231216",
+      "source": "https://static.cninfo.com.cn/finalpage/2023-12-16/1218635071.PDF",
+      "source_sha256": "ee2a6da41b2e7d04de6282bba19b0299f0bd1d29785bfafbb16f3a928d283be1",
+      "pages": "1,2",
+      "note": "2023-049公告明确自2023年12月18日开市起停牌，披露重组预案后另行申请复牌。12月19日至20日按已公告持续停牌状态登记；不把预计不超过5个交易日当作确定期限，不使用12月21日复牌公告倒灌。可用性仅核实到公开日，分钟级时点未核实；仅供缺失行情的账面估值，不提供可成交行情。"
+    },
+    {
+      "symbol": "000726.SZ",
+      "day": "20150710",
+      "full_day": true,
+      "available_on": "20150710",
+      "source": "https://static.cninfo.com.cn/finalpage/2015-07-10/1201268099.PDF",
+      "source_sha256": "f203c0eec018ceaab976cd44653dc9ca0b38c0d8ca3e45453d693cee049351f8",
+      "pages": "1",
+      "note": "2015-023公告明确7月10日上午开市起停牌，待相关事项公告后复牌。非公告日按已公开持续停牌状态登记，未把不超过五个交易日的承诺当作固定复牌日，未前置7月14日复牌公告。仅用于日级收盘估值；可获知时间仅核实到公开日，不声称开盘前已知，不提供可成交行情。"
+    },
+    {
+      "symbol": "000726.SZ",
+      "day": "20150713",
+      "full_day": true,
+      "available_on": "20150710",
+      "source": "https://static.cninfo.com.cn/finalpage/2015-07-10/1201268099.PDF",
+      "source_sha256": "f203c0eec018ceaab976cd44653dc9ca0b38c0d8ca3e45453d693cee049351f8",
+      "pages": "1",
+      "note": "2015-023公告明确7月10日上午开市起停牌，待相关事项公告后复牌。非公告日按已公开持续停牌状态登记，未把不超过五个交易日的承诺当作固定复牌日，未前置7月14日复牌公告。仅用于日级收盘估值；可获知时间仅核实到公开日，不声称开盘前已知，不提供可成交行情。"
+    },
+    {
+      "symbol": "000858.SZ",
+      "day": "20150730",
+      "full_day": true,
+      "available_on": "20150730",
+      "source": "https://static.cninfo.com.cn/finalpage/2015-07-30/1201364487.PDF",
+      "source_sha256": "8e03640e12a1a70ecaa7ff846ffdcf7cbe927f1c8fe96c4f5d3112af05ca1b93",
+      "pages": "1",
+      "note": "采用当日已公开的最新初停或续停公告，持续停牌状态以当时原文为据；7月29日13:00开始的半日停牌不作全天登记，10月31日公开的复牌公告未前置。available_on取巨潮公开日而非PDF落款。仅用于日级收盘估值，不声称开盘前已知，不提供可成交行情。"
+    },
+    {
+      "symbol": "000858.SZ",
+      "day": "20150731",
+      "full_day": true,
+      "available_on": "20150730",
+      "source": "https://static.cninfo.com.cn/finalpage/2015-07-30/1201364487.PDF",
+      "source_sha256": "8e03640e12a1a70ecaa7ff846ffdcf7cbe927f1c8fe96c4f5d3112af05ca1b93",
+      "pages": "1",
+      "note": "采用当日已公开的最新初停或续停公告，持续停牌状态以当时原文为据；7月29日13:00开始的半日停牌不作全天登记，10月31日公开的复牌公告未前置。available_on取巨潮公开日而非PDF落款。仅用于日级收盘估值，不声称开盘前已知，不提供可成交行情。"
+    },
+    {
+      "symbol": "000858.SZ",
+      "day": "20150803",
+      "full_day": true,
+      "available_on": "20150730",
+      "source": "https://static.cninfo.com.cn/finalpage/2015-07-30/1201364487.PDF",
+      "source_sha256": "8e03640e12a1a70ecaa7ff846ffdcf7cbe927f1c8fe96c4f5d3112af05ca1b93",
+      "pages": "1",
+      "note": "采用当日已公开的最新初停或续停公告，持续停牌状态以当时原文为据；7月29日13:00开始的半日停牌不作全天登记，10月31日公开的复牌公告未前置。available_on取巨潮公开日而非PDF落款。仅用于日级收盘估值，不声称开盘前已知，不提供可成交行情。"
+    },
+    {
+      "symbol": "000858.SZ",
+      "day": "20150804",
+      "full_day": true,
+      "available_on": "20150730",
+      "source": "https://static.cninfo.com.cn/finalpage/2015-07-30/1201364487.PDF",
+      "source_sha256": "8e03640e12a1a70ecaa7ff846ffdcf7cbe927f1c8fe96c4f5d3112af05ca1b93",
+      "pages": "1",
+      "note": "采用当日已公开的最新初停或续停公告，持续停牌状态以当时原文为据；7月29日13:00开始的半日停牌不作全天登记，10月31日公开的复牌公告未前置。available_on取巨潮公开日而非PDF落款。仅用于日级收盘估值，不声称开盘前已知，不提供可成交行情。"
+    },
+    {
+      "symbol": "000858.SZ",
+      "day": "20150805",
+      "full_day": true,
+      "available_on": "20150730",
+      "source": "https://static.cninfo.com.cn/finalpage/2015-07-30/1201364487.PDF",
+      "source_sha256": "8e03640e12a1a70ecaa7ff846ffdcf7cbe927f1c8fe96c4f5d3112af05ca1b93",
+      "pages": "1",
+      "note": "采用当日已公开的最新初停或续停公告，持续停牌状态以当时原文为据；7月29日13:00开始的半日停牌不作全天登记，10月31日公开的复牌公告未前置。available_on取巨潮公开日而非PDF落款。仅用于日级收盘估值，不声称开盘前已知，不提供可成交行情。"
+    },
+    {
+      "symbol": "000858.SZ",
+      "day": "20150806",
+      "full_day": true,
+      "available_on": "20150806",
+      "source": "https://static.cninfo.com.cn/finalpage/2015-08-06/1201397615.PDF",
+      "source_sha256": "fba3d64e0691836e6ffc6fc9eef49092056eaf4d78fb6df0ad3341593361a6f2",
+      "pages": "1",
+      "note": "采用当日已公开的最新初停或续停公告，持续停牌状态以当时原文为据；7月29日13:00开始的半日停牌不作全天登记，10月31日公开的复牌公告未前置。available_on取巨潮公开日而非PDF落款。仅用于日级收盘估值，不声称开盘前已知，不提供可成交行情。"
+    },
+    {
+      "symbol": "000858.SZ",
+      "day": "20150807",
+      "full_day": true,
+      "available_on": "20150806",
+      "source": "https://static.cninfo.com.cn/finalpage/2015-08-06/1201397615.PDF",
+      "source_sha256": "fba3d64e0691836e6ffc6fc9eef49092056eaf4d78fb6df0ad3341593361a6f2",
+      "pages": "1",
+      "note": "采用当日已公开的最新初停或续停公告，持续停牌状态以当时原文为据；7月29日13:00开始的半日停牌不作全天登记，10月31日公开的复牌公告未前置。available_on取巨潮公开日而非PDF落款。仅用于日级收盘估值，不声称开盘前已知，不提供可成交行情。"
+    },
+    {
+      "symbol": "000858.SZ",
+      "day": "20150810",
+      "full_day": true,
+      "available_on": "20150806",
+      "source": "https://static.cninfo.com.cn/finalpage/2015-08-06/1201397615.PDF",
+      "source_sha256": "fba3d64e0691836e6ffc6fc9eef49092056eaf4d78fb6df0ad3341593361a6f2",
+      "pages": "1",
+      "note": "采用当日已公开的最新初停或续停公告，持续停牌状态以当时原文为据；7月29日13:00开始的半日停牌不作全天登记，10月31日公开的复牌公告未前置。available_on取巨潮公开日而非PDF落款。仅用于日级收盘估值，不声称开盘前已知，不提供可成交行情。"
+    },
+    {
+      "symbol": "000858.SZ",
+      "day": "20150811",
+      "full_day": true,
+      "available_on": "20150806",
+      "source": "https://static.cninfo.com.cn/finalpage/2015-08-06/1201397615.PDF",
+      "source_sha256": "fba3d64e0691836e6ffc6fc9eef49092056eaf4d78fb6df0ad3341593361a6f2",
+      "pages": "1",
+      "note": "采用当日已公开的最新初停或续停公告，持续停牌状态以当时原文为据；7月29日13:00开始的半日停牌不作全天登记，10月31日公开的复牌公告未前置。available_on取巨潮公开日而非PDF落款。仅用于日级收盘估值，不声称开盘前已知，不提供可成交行情。"
+    },
+    {
+      "symbol": "000858.SZ",
+      "day": "20150812",
+      "full_day": true,
+      "available_on": "20150806",
+      "source": "https://static.cninfo.com.cn/finalpage/2015-08-06/1201397615.PDF",
+      "source_sha256": "fba3d64e0691836e6ffc6fc9eef49092056eaf4d78fb6df0ad3341593361a6f2",
+      "pages": "1",
+      "note": "采用当日已公开的最新初停或续停公告，持续停牌状态以当时原文为据；7月29日13:00开始的半日停牌不作全天登记，10月31日公开的复牌公告未前置。available_on取巨潮公开日而非PDF落款。仅用于日级收盘估值，不声称开盘前已知，不提供可成交行情。"
+    },
+    {
+      "symbol": "000858.SZ",
+      "day": "20150813",
+      "full_day": true,
+      "available_on": "20150813",
+      "source": "https://static.cninfo.com.cn/finalpage/2015-08-13/1201432957.PDF",
+      "source_sha256": "6435cf3542c008dc7a773698b4383f692f817222f9a6bb80cef3325baa834b37",
+      "pages": "1",
+      "note": "采用当日已公开的最新初停或续停公告，持续停牌状态以当时原文为据；7月29日13:00开始的半日停牌不作全天登记，10月31日公开的复牌公告未前置。available_on取巨潮公开日而非PDF落款。仅用于日级收盘估值，不声称开盘前已知，不提供可成交行情。"
+    },
+    {
+      "symbol": "000858.SZ",
+      "day": "20150814",
+      "full_day": true,
+      "available_on": "20150813",
+      "source": "https://static.cninfo.com.cn/finalpage/2015-08-13/1201432957.PDF",
+      "source_sha256": "6435cf3542c008dc7a773698b4383f692f817222f9a6bb80cef3325baa834b37",
+      "pages": "1",
+      "note": "采用当日已公开的最新初停或续停公告，持续停牌状态以当时原文为据；7月29日13:00开始的半日停牌不作全天登记，10月31日公开的复牌公告未前置。available_on取巨潮公开日而非PDF落款。仅用于日级收盘估值，不声称开盘前已知，不提供可成交行情。"
+    },
+    {
+      "symbol": "000858.SZ",
+      "day": "20150817",
+      "full_day": true,
+      "available_on": "20150813",
+      "source": "https://static.cninfo.com.cn/finalpage/2015-08-13/1201432957.PDF",
+      "source_sha256": "6435cf3542c008dc7a773698b4383f692f817222f9a6bb80cef3325baa834b37",
+      "pages": "1",
+      "note": "采用当日已公开的最新初停或续停公告，持续停牌状态以当时原文为据；7月29日13:00开始的半日停牌不作全天登记，10月31日公开的复牌公告未前置。available_on取巨潮公开日而非PDF落款。仅用于日级收盘估值，不声称开盘前已知，不提供可成交行情。"
+    },
+    {
+      "symbol": "000858.SZ",
+      "day": "20150818",
+      "full_day": true,
+      "available_on": "20150813",
+      "source": "https://static.cninfo.com.cn/finalpage/2015-08-13/1201432957.PDF",
+      "source_sha256": "6435cf3542c008dc7a773698b4383f692f817222f9a6bb80cef3325baa834b37",
+      "pages": "1",
+      "note": "采用当日已公开的最新初停或续停公告，持续停牌状态以当时原文为据；7月29日13:00开始的半日停牌不作全天登记，10月31日公开的复牌公告未前置。available_on取巨潮公开日而非PDF落款。仅用于日级收盘估值，不声称开盘前已知，不提供可成交行情。"
+    },
+    {
+      "symbol": "000858.SZ",
+      "day": "20150819",
+      "full_day": true,
+      "available_on": "20150813",
+      "source": "https://static.cninfo.com.cn/finalpage/2015-08-13/1201432957.PDF",
+      "source_sha256": "6435cf3542c008dc7a773698b4383f692f817222f9a6bb80cef3325baa834b37",
+      "pages": "1",
+      "note": "采用当日已公开的最新初停或续停公告，持续停牌状态以当时原文为据；7月29日13:00开始的半日停牌不作全天登记，10月31日公开的复牌公告未前置。available_on取巨潮公开日而非PDF落款。仅用于日级收盘估值，不声称开盘前已知，不提供可成交行情。"
+    },
+    {
+      "symbol": "000858.SZ",
+      "day": "20150820",
+      "full_day": true,
+      "available_on": "20150813",
+      "source": "https://static.cninfo.com.cn/finalpage/2015-08-13/1201432957.PDF",
+      "source_sha256": "6435cf3542c008dc7a773698b4383f692f817222f9a6bb80cef3325baa834b37",
+      "pages": "1",
+      "note": "采用当日已公开的最新初停或续停公告，持续停牌状态以当时原文为据；7月29日13:00开始的半日停牌不作全天登记，10月31日公开的复牌公告未前置。available_on取巨潮公开日而非PDF落款。仅用于日级收盘估值，不声称开盘前已知，不提供可成交行情。"
+    },
+    {
+      "symbol": "000858.SZ",
+      "day": "20150821",
+      "full_day": true,
+      "available_on": "20150821",
+      "source": "https://static.cninfo.com.cn/finalpage/2015-08-21/1201467048.PDF",
+      "source_sha256": "5e61894b0e57a39dd9816a7829fc62231d6af99a5904bde92a6b862d979f06a4",
+      "pages": "1",
+      "note": "采用当日已公开的最新初停或续停公告，持续停牌状态以当时原文为据；7月29日13:00开始的半日停牌不作全天登记，10月31日公开的复牌公告未前置。available_on取巨潮公开日而非PDF落款。仅用于日级收盘估值，不声称开盘前已知，不提供可成交行情。"
+    },
+    {
+      "symbol": "000858.SZ",
+      "day": "20150824",
+      "full_day": true,
+      "available_on": "20150821",
+      "source": "https://static.cninfo.com.cn/finalpage/2015-08-21/1201467048.PDF",
+      "source_sha256": "5e61894b0e57a39dd9816a7829fc62231d6af99a5904bde92a6b862d979f06a4",
+      "pages": "1",
+      "note": "采用当日已公开的最新初停或续停公告，持续停牌状态以当时原文为据；7月29日13:00开始的半日停牌不作全天登记，10月31日公开的复牌公告未前置。available_on取巨潮公开日而非PDF落款。仅用于日级收盘估值，不声称开盘前已知，不提供可成交行情。"
+    },
+    {
+      "symbol": "000858.SZ",
+      "day": "20150825",
+      "full_day": true,
+      "available_on": "20150821",
+      "source": "https://static.cninfo.com.cn/finalpage/2015-08-21/1201467048.PDF",
+      "source_sha256": "5e61894b0e57a39dd9816a7829fc62231d6af99a5904bde92a6b862d979f06a4",
+      "pages": "1",
+      "note": "采用当日已公开的最新初停或续停公告，持续停牌状态以当时原文为据；7月29日13:00开始的半日停牌不作全天登记，10月31日公开的复牌公告未前置。available_on取巨潮公开日而非PDF落款。仅用于日级收盘估值，不声称开盘前已知，不提供可成交行情。"
+    },
+    {
+      "symbol": "000858.SZ",
+      "day": "20150826",
+      "full_day": true,
+      "available_on": "20150821",
+      "source": "https://static.cninfo.com.cn/finalpage/2015-08-21/1201467048.PDF",
+      "source_sha256": "5e61894b0e57a39dd9816a7829fc62231d6af99a5904bde92a6b862d979f06a4",
+      "pages": "1",
+      "note": "采用当日已公开的最新初停或续停公告，持续停牌状态以当时原文为据；7月29日13:00开始的半日停牌不作全天登记，10月31日公开的复牌公告未前置。available_on取巨潮公开日而非PDF落款。仅用于日级收盘估值，不声称开盘前已知，不提供可成交行情。"
+    },
+    {
+      "symbol": "000858.SZ",
+      "day": "20150827",
+      "full_day": true,
+      "available_on": "20150821",
+      "source": "https://static.cninfo.com.cn/finalpage/2015-08-21/1201467048.PDF",
+      "source_sha256": "5e61894b0e57a39dd9816a7829fc62231d6af99a5904bde92a6b862d979f06a4",
+      "pages": "1",
+      "note": "采用当日已公开的最新初停或续停公告，持续停牌状态以当时原文为据；7月29日13:00开始的半日停牌不作全天登记，10月31日公开的复牌公告未前置。available_on取巨潮公开日而非PDF落款。仅用于日级收盘估值，不声称开盘前已知，不提供可成交行情。"
+    },
+    {
+      "symbol": "000858.SZ",
+      "day": "20150828",
+      "full_day": true,
+      "available_on": "20150828",
+      "source": "https://static.cninfo.com.cn/finalpage/2015-08-28/1201508435.PDF",
+      "source_sha256": "c09473c59f5d87e98e23c75f338e8cb2bdd94bcf390b2df37e41860cb3bdd133",
+      "pages": "1",
+      "note": "采用当日已公开的最新初停或续停公告，持续停牌状态以当时原文为据；7月29日13:00开始的半日停牌不作全天登记，10月31日公开的复牌公告未前置。available_on取巨潮公开日而非PDF落款。仅用于日级收盘估值，不声称开盘前已知，不提供可成交行情。"
+    },
+    {
+      "symbol": "000858.SZ",
+      "day": "20150831",
+      "full_day": true,
+      "available_on": "20150828",
+      "source": "https://static.cninfo.com.cn/finalpage/2015-08-28/1201508435.PDF",
+      "source_sha256": "c09473c59f5d87e98e23c75f338e8cb2bdd94bcf390b2df37e41860cb3bdd133",
+      "pages": "1",
+      "note": "采用当日已公开的最新初停或续停公告，持续停牌状态以当时原文为据；7月29日13:00开始的半日停牌不作全天登记，10月31日公开的复牌公告未前置。available_on取巨潮公开日而非PDF落款。仅用于日级收盘估值，不声称开盘前已知，不提供可成交行情。"
+    },
+    {
+      "symbol": "000858.SZ",
+      "day": "20150901",
+      "full_day": true,
+      "available_on": "20150828",
+      "source": "https://static.cninfo.com.cn/finalpage/2015-08-28/1201508435.PDF",
+      "source_sha256": "c09473c59f5d87e98e23c75f338e8cb2bdd94bcf390b2df37e41860cb3bdd133",
+      "pages": "1",
+      "note": "采用当日已公开的最新初停或续停公告，持续停牌状态以当时原文为据；7月29日13:00开始的半日停牌不作全天登记，10月31日公开的复牌公告未前置。available_on取巨潮公开日而非PDF落款。仅用于日级收盘估值，不声称开盘前已知，不提供可成交行情。"
+    },
+    {
+      "symbol": "000858.SZ",
+      "day": "20150902",
+      "full_day": true,
+      "available_on": "20150828",
+      "source": "https://static.cninfo.com.cn/finalpage/2015-08-28/1201508435.PDF",
+      "source_sha256": "c09473c59f5d87e98e23c75f338e8cb2bdd94bcf390b2df37e41860cb3bdd133",
+      "pages": "1",
+      "note": "采用当日已公开的最新初停或续停公告，持续停牌状态以当时原文为据；7月29日13:00开始的半日停牌不作全天登记，10月31日公开的复牌公告未前置。available_on取巨潮公开日而非PDF落款。仅用于日级收盘估值，不声称开盘前已知，不提供可成交行情。"
+    },
+    {
+      "symbol": "000858.SZ",
+      "day": "20150907",
+      "full_day": true,
+      "available_on": "20150828",
+      "source": "https://static.cninfo.com.cn/finalpage/2015-08-28/1201508435.PDF",
+      "source_sha256": "c09473c59f5d87e98e23c75f338e8cb2bdd94bcf390b2df37e41860cb3bdd133",
+      "pages": "1",
+      "note": "采用当日已公开的最新初停或续停公告，持续停牌状态以当时原文为据；7月29日13:00开始的半日停牌不作全天登记，10月31日公开的复牌公告未前置。available_on取巨潮公开日而非PDF落款。仅用于日级收盘估值，不声称开盘前已知，不提供可成交行情。"
+    },
+    {
+      "symbol": "000858.SZ",
+      "day": "20150908",
+      "full_day": true,
+      "available_on": "20150828",
+      "source": "https://static.cninfo.com.cn/finalpage/2015-08-28/1201508435.PDF",
+      "source_sha256": "c09473c59f5d87e98e23c75f338e8cb2bdd94bcf390b2df37e41860cb3bdd133",
+      "pages": "1",
+      "note": "采用当日已公开的最新初停或续停公告，持续停牌状态以当时原文为据；7月29日13:00开始的半日停牌不作全天登记，10月31日公开的复牌公告未前置。available_on取巨潮公开日而非PDF落款。仅用于日级收盘估值，不声称开盘前已知，不提供可成交行情。"
+    },
+    {
+      "symbol": "000858.SZ",
+      "day": "20150909",
+      "full_day": true,
+      "available_on": "20150909",
+      "source": "https://static.cninfo.com.cn/finalpage/2015-09-09/1201567270.PDF",
+      "source_sha256": "8368b73bdbc1cc9a90a3ba1575ac5bbf3e5f93e1f8ec9541142b5106115daf14",
+      "pages": "1",
+      "note": "采用当日已公开的最新初停或续停公告，持续停牌状态以当时原文为据；7月29日13:00开始的半日停牌不作全天登记，10月31日公开的复牌公告未前置。available_on取巨潮公开日而非PDF落款。仅用于日级收盘估值，不声称开盘前已知，不提供可成交行情。"
+    },
+    {
+      "symbol": "000858.SZ",
+      "day": "20150910",
+      "full_day": true,
+      "available_on": "20150909",
+      "source": "https://static.cninfo.com.cn/finalpage/2015-09-09/1201567270.PDF",
+      "source_sha256": "8368b73bdbc1cc9a90a3ba1575ac5bbf3e5f93e1f8ec9541142b5106115daf14",
+      "pages": "1",
+      "note": "采用当日已公开的最新初停或续停公告，持续停牌状态以当时原文为据；7月29日13:00开始的半日停牌不作全天登记，10月31日公开的复牌公告未前置。available_on取巨潮公开日而非PDF落款。仅用于日级收盘估值，不声称开盘前已知，不提供可成交行情。"
+    },
+    {
+      "symbol": "000858.SZ",
+      "day": "20150911",
+      "full_day": true,
+      "available_on": "20150909",
+      "source": "https://static.cninfo.com.cn/finalpage/2015-09-09/1201567270.PDF",
+      "source_sha256": "8368b73bdbc1cc9a90a3ba1575ac5bbf3e5f93e1f8ec9541142b5106115daf14",
+      "pages": "1",
+      "note": "采用当日已公开的最新初停或续停公告，持续停牌状态以当时原文为据；7月29日13:00开始的半日停牌不作全天登记，10月31日公开的复牌公告未前置。available_on取巨潮公开日而非PDF落款。仅用于日级收盘估值，不声称开盘前已知，不提供可成交行情。"
+    },
+    {
+      "symbol": "000858.SZ",
+      "day": "20150914",
+      "full_day": true,
+      "available_on": "20150909",
+      "source": "https://static.cninfo.com.cn/finalpage/2015-09-09/1201567270.PDF",
+      "source_sha256": "8368b73bdbc1cc9a90a3ba1575ac5bbf3e5f93e1f8ec9541142b5106115daf14",
+      "pages": "1",
+      "note": "采用当日已公开的最新初停或续停公告，持续停牌状态以当时原文为据；7月29日13:00开始的半日停牌不作全天登记，10月31日公开的复牌公告未前置。available_on取巨潮公开日而非PDF落款。仅用于日级收盘估值，不声称开盘前已知，不提供可成交行情。"
+    },
+    {
+      "symbol": "000858.SZ",
+      "day": "20150915",
+      "full_day": true,
+      "available_on": "20150909",
+      "source": "https://static.cninfo.com.cn/finalpage/2015-09-09/1201567270.PDF",
+      "source_sha256": "8368b73bdbc1cc9a90a3ba1575ac5bbf3e5f93e1f8ec9541142b5106115daf14",
+      "pages": "1",
+      "note": "采用当日已公开的最新初停或续停公告，持续停牌状态以当时原文为据；7月29日13:00开始的半日停牌不作全天登记，10月31日公开的复牌公告未前置。available_on取巨潮公开日而非PDF落款。仅用于日级收盘估值，不声称开盘前已知，不提供可成交行情。"
+    },
+    {
+      "symbol": "000858.SZ",
+      "day": "20150916",
+      "full_day": true,
+      "available_on": "20150909",
+      "source": "https://static.cninfo.com.cn/finalpage/2015-09-09/1201567270.PDF",
+      "source_sha256": "8368b73bdbc1cc9a90a3ba1575ac5bbf3e5f93e1f8ec9541142b5106115daf14",
+      "pages": "1",
+      "note": "采用当日已公开的最新初停或续停公告，持续停牌状态以当时原文为据；7月29日13:00开始的半日停牌不作全天登记，10月31日公开的复牌公告未前置。available_on取巨潮公开日而非PDF落款。仅用于日级收盘估值，不声称开盘前已知，不提供可成交行情。"
+    },
+    {
+      "symbol": "000858.SZ",
+      "day": "20150917",
+      "full_day": true,
+      "available_on": "20150917",
+      "source": "https://static.cninfo.com.cn/finalpage/2015-09-17/1201603160.PDF",
+      "source_sha256": "6f04b569e068507a26da8c1a9e3336bd42ce55cbde53790082512cebee5ef490",
+      "pages": "1",
+      "note": "采用当日已公开的最新初停或续停公告，持续停牌状态以当时原文为据；7月29日13:00开始的半日停牌不作全天登记，10月31日公开的复牌公告未前置。available_on取巨潮公开日而非PDF落款。仅用于日级收盘估值，不声称开盘前已知，不提供可成交行情。"
+    },
+    {
+      "symbol": "000858.SZ",
+      "day": "20150918",
+      "full_day": true,
+      "available_on": "20150917",
+      "source": "https://static.cninfo.com.cn/finalpage/2015-09-17/1201603160.PDF",
+      "source_sha256": "6f04b569e068507a26da8c1a9e3336bd42ce55cbde53790082512cebee5ef490",
+      "pages": "1",
+      "note": "采用当日已公开的最新初停或续停公告，持续停牌状态以当时原文为据；7月29日13:00开始的半日停牌不作全天登记，10月31日公开的复牌公告未前置。available_on取巨潮公开日而非PDF落款。仅用于日级收盘估值，不声称开盘前已知，不提供可成交行情。"
+    },
+    {
+      "symbol": "000858.SZ",
+      "day": "20150921",
+      "full_day": true,
+      "available_on": "20150917",
+      "source": "https://static.cninfo.com.cn/finalpage/2015-09-17/1201603160.PDF",
+      "source_sha256": "6f04b569e068507a26da8c1a9e3336bd42ce55cbde53790082512cebee5ef490",
+      "pages": "1",
+      "note": "采用当日已公开的最新初停或续停公告，持续停牌状态以当时原文为据；7月29日13:00开始的半日停牌不作全天登记，10月31日公开的复牌公告未前置。available_on取巨潮公开日而非PDF落款。仅用于日级收盘估值，不声称开盘前已知，不提供可成交行情。"
+    },
+    {
+      "symbol": "000858.SZ",
+      "day": "20150922",
+      "full_day": true,
+      "available_on": "20150917",
+      "source": "https://static.cninfo.com.cn/finalpage/2015-09-17/1201603160.PDF",
+      "source_sha256": "6f04b569e068507a26da8c1a9e3336bd42ce55cbde53790082512cebee5ef490",
+      "pages": "1",
+      "note": "采用当日已公开的最新初停或续停公告，持续停牌状态以当时原文为据；7月29日13:00开始的半日停牌不作全天登记，10月31日公开的复牌公告未前置。available_on取巨潮公开日而非PDF落款。仅用于日级收盘估值，不声称开盘前已知，不提供可成交行情。"
+    },
+    {
+      "symbol": "000858.SZ",
+      "day": "20150923",
+      "full_day": true,
+      "available_on": "20150917",
+      "source": "https://static.cninfo.com.cn/finalpage/2015-09-17/1201603160.PDF",
+      "source_sha256": "6f04b569e068507a26da8c1a9e3336bd42ce55cbde53790082512cebee5ef490",
+      "pages": "1",
+      "note": "采用当日已公开的最新初停或续停公告，持续停牌状态以当时原文为据；7月29日13:00开始的半日停牌不作全天登记，10月31日公开的复牌公告未前置。available_on取巨潮公开日而非PDF落款。仅用于日级收盘估值，不声称开盘前已知，不提供可成交行情。"
+    },
+    {
+      "symbol": "000858.SZ",
+      "day": "20150924",
+      "full_day": true,
+      "available_on": "20150917",
+      "source": "https://static.cninfo.com.cn/finalpage/2015-09-17/1201603160.PDF",
+      "source_sha256": "6f04b569e068507a26da8c1a9e3336bd42ce55cbde53790082512cebee5ef490",
+      "pages": "1",
+      "note": "采用当日已公开的最新初停或续停公告，持续停牌状态以当时原文为据；7月29日13:00开始的半日停牌不作全天登记，10月31日公开的复牌公告未前置。available_on取巨潮公开日而非PDF落款。仅用于日级收盘估值，不声称开盘前已知，不提供可成交行情。"
+    },
+    {
+      "symbol": "000858.SZ",
+      "day": "20150925",
+      "full_day": true,
+      "available_on": "20150925",
+      "source": "https://static.cninfo.com.cn/finalpage/2015-09-25/1201635361.PDF",
+      "source_sha256": "8f2828e49aa8df60248edb1ecd04fa3a748146d386c01ce1282b85645859bca0",
+      "pages": "1",
+      "note": "采用当日已公开的最新初停或续停公告，持续停牌状态以当时原文为据；7月29日13:00开始的半日停牌不作全天登记，10月31日公开的复牌公告未前置。available_on取巨潮公开日而非PDF落款。仅用于日级收盘估值，不声称开盘前已知，不提供可成交行情。"
+    },
+    {
+      "symbol": "000858.SZ",
+      "day": "20150928",
+      "full_day": true,
+      "available_on": "20150925",
+      "source": "https://static.cninfo.com.cn/finalpage/2015-09-25/1201635361.PDF",
+      "source_sha256": "8f2828e49aa8df60248edb1ecd04fa3a748146d386c01ce1282b85645859bca0",
+      "pages": "1",
+      "note": "采用当日已公开的最新初停或续停公告，持续停牌状态以当时原文为据；7月29日13:00开始的半日停牌不作全天登记，10月31日公开的复牌公告未前置。available_on取巨潮公开日而非PDF落款。仅用于日级收盘估值，不声称开盘前已知，不提供可成交行情。"
+    },
+    {
+      "symbol": "000858.SZ",
+      "day": "20150929",
+      "full_day": true,
+      "available_on": "20150925",
+      "source": "https://static.cninfo.com.cn/finalpage/2015-09-25/1201635361.PDF",
+      "source_sha256": "8f2828e49aa8df60248edb1ecd04fa3a748146d386c01ce1282b85645859bca0",
+      "pages": "1",
+      "note": "采用当日已公开的最新初停或续停公告，持续停牌状态以当时原文为据；7月29日13:00开始的半日停牌不作全天登记，10月31日公开的复牌公告未前置。available_on取巨潮公开日而非PDF落款。仅用于日级收盘估值，不声称开盘前已知，不提供可成交行情。"
+    },
+    {
+      "symbol": "000858.SZ",
+      "day": "20150930",
+      "full_day": true,
+      "available_on": "20150925",
+      "source": "https://static.cninfo.com.cn/finalpage/2015-09-25/1201635361.PDF",
+      "source_sha256": "8f2828e49aa8df60248edb1ecd04fa3a748146d386c01ce1282b85645859bca0",
+      "pages": "1",
+      "note": "采用当日已公开的最新初停或续停公告，持续停牌状态以当时原文为据；7月29日13:00开始的半日停牌不作全天登记，10月31日公开的复牌公告未前置。available_on取巨潮公开日而非PDF落款。仅用于日级收盘估值，不声称开盘前已知，不提供可成交行情。"
+    },
+    {
+      "symbol": "000858.SZ",
+      "day": "20151008",
+      "full_day": true,
+      "available_on": "20150925",
+      "source": "https://static.cninfo.com.cn/finalpage/2015-09-25/1201635361.PDF",
+      "source_sha256": "8f2828e49aa8df60248edb1ecd04fa3a748146d386c01ce1282b85645859bca0",
+      "pages": "1",
+      "note": "采用当日已公开的最新初停或续停公告，持续停牌状态以当时原文为据；7月29日13:00开始的半日停牌不作全天登记，10月31日公开的复牌公告未前置。available_on取巨潮公开日而非PDF落款。仅用于日级收盘估值，不声称开盘前已知，不提供可成交行情。"
+    },
+    {
+      "symbol": "000858.SZ",
+      "day": "20151009",
+      "full_day": true,
+      "available_on": "20150925",
+      "source": "https://static.cninfo.com.cn/finalpage/2015-09-25/1201635361.PDF",
+      "source_sha256": "8f2828e49aa8df60248edb1ecd04fa3a748146d386c01ce1282b85645859bca0",
+      "pages": "1",
+      "note": "采用当日已公开的最新初停或续停公告，持续停牌状态以当时原文为据；7月29日13:00开始的半日停牌不作全天登记，10月31日公开的复牌公告未前置。available_on取巨潮公开日而非PDF落款。仅用于日级收盘估值，不声称开盘前已知，不提供可成交行情。"
+    },
+    {
+      "symbol": "000858.SZ",
+      "day": "20151012",
+      "full_day": true,
+      "available_on": "20151012",
+      "source": "https://static.cninfo.com.cn/finalpage/2015-10-12/1201673995.PDF",
+      "source_sha256": "4cc5d8af1cc0281de7468c4d8477b51d54f29230d52b44f63c5a3540af0de473",
+      "pages": "1",
+      "note": "采用当日已公开的最新初停或续停公告，持续停牌状态以当时原文为据；7月29日13:00开始的半日停牌不作全天登记，10月31日公开的复牌公告未前置。available_on取巨潮公开日而非PDF落款。仅用于日级收盘估值，不声称开盘前已知，不提供可成交行情。"
+    },
+    {
+      "symbol": "000858.SZ",
+      "day": "20151013",
+      "full_day": true,
+      "available_on": "20151012",
+      "source": "https://static.cninfo.com.cn/finalpage/2015-10-12/1201673995.PDF",
+      "source_sha256": "4cc5d8af1cc0281de7468c4d8477b51d54f29230d52b44f63c5a3540af0de473",
+      "pages": "1",
+      "note": "采用当日已公开的最新初停或续停公告，持续停牌状态以当时原文为据；7月29日13:00开始的半日停牌不作全天登记，10月31日公开的复牌公告未前置。available_on取巨潮公开日而非PDF落款。仅用于日级收盘估值，不声称开盘前已知，不提供可成交行情。"
+    },
+    {
+      "symbol": "000858.SZ",
+      "day": "20151014",
+      "full_day": true,
+      "available_on": "20151012",
+      "source": "https://static.cninfo.com.cn/finalpage/2015-10-12/1201673995.PDF",
+      "source_sha256": "4cc5d8af1cc0281de7468c4d8477b51d54f29230d52b44f63c5a3540af0de473",
+      "pages": "1",
+      "note": "采用当日已公开的最新初停或续停公告，持续停牌状态以当时原文为据；7月29日13:00开始的半日停牌不作全天登记，10月31日公开的复牌公告未前置。available_on取巨潮公开日而非PDF落款。仅用于日级收盘估值，不声称开盘前已知，不提供可成交行情。"
+    },
+    {
+      "symbol": "000858.SZ",
+      "day": "20151015",
+      "full_day": true,
+      "available_on": "20151012",
+      "source": "https://static.cninfo.com.cn/finalpage/2015-10-12/1201673995.PDF",
+      "source_sha256": "4cc5d8af1cc0281de7468c4d8477b51d54f29230d52b44f63c5a3540af0de473",
+      "pages": "1",
+      "note": "采用当日已公开的最新初停或续停公告，持续停牌状态以当时原文为据；7月29日13:00开始的半日停牌不作全天登记，10月31日公开的复牌公告未前置。available_on取巨潮公开日而非PDF落款。仅用于日级收盘估值，不声称开盘前已知，不提供可成交行情。"
+    },
+    {
+      "symbol": "000858.SZ",
+      "day": "20151016",
+      "full_day": true,
+      "available_on": "20151012",
+      "source": "https://static.cninfo.com.cn/finalpage/2015-10-12/1201673995.PDF",
+      "source_sha256": "4cc5d8af1cc0281de7468c4d8477b51d54f29230d52b44f63c5a3540af0de473",
+      "pages": "1",
+      "note": "采用当日已公开的最新初停或续停公告，持续停牌状态以当时原文为据；7月29日13:00开始的半日停牌不作全天登记，10月31日公开的复牌公告未前置。available_on取巨潮公开日而非PDF落款。仅用于日级收盘估值，不声称开盘前已知，不提供可成交行情。"
+    },
+    {
+      "symbol": "000858.SZ",
+      "day": "20151019",
+      "full_day": true,
+      "available_on": "20151012",
+      "source": "https://static.cninfo.com.cn/finalpage/2015-10-12/1201673995.PDF",
+      "source_sha256": "4cc5d8af1cc0281de7468c4d8477b51d54f29230d52b44f63c5a3540af0de473",
+      "pages": "1",
+      "note": "采用当日已公开的最新初停或续停公告，持续停牌状态以当时原文为据；7月29日13:00开始的半日停牌不作全天登记，10月31日公开的复牌公告未前置。available_on取巨潮公开日而非PDF落款。仅用于日级收盘估值，不声称开盘前已知，不提供可成交行情。"
+    },
+    {
+      "symbol": "000858.SZ",
+      "day": "20151020",
+      "full_day": true,
+      "available_on": "20151020",
+      "source": "https://static.cninfo.com.cn/finalpage/2015-10-20/1201708894.PDF",
+      "source_sha256": "289671d8f3174484cab18dcf651dc7cc2150de4462f0995d528d8f92606d0dac",
+      "pages": "1",
+      "note": "采用当日已公开的最新初停或续停公告，持续停牌状态以当时原文为据；7月29日13:00开始的半日停牌不作全天登记，10月31日公开的复牌公告未前置。available_on取巨潮公开日而非PDF落款。仅用于日级收盘估值，不声称开盘前已知，不提供可成交行情。"
+    },
+    {
+      "symbol": "000858.SZ",
+      "day": "20151021",
+      "full_day": true,
+      "available_on": "20151020",
+      "source": "https://static.cninfo.com.cn/finalpage/2015-10-20/1201708894.PDF",
+      "source_sha256": "289671d8f3174484cab18dcf651dc7cc2150de4462f0995d528d8f92606d0dac",
+      "pages": "1",
+      "note": "采用当日已公开的最新初停或续停公告，持续停牌状态以当时原文为据；7月29日13:00开始的半日停牌不作全天登记，10月31日公开的复牌公告未前置。available_on取巨潮公开日而非PDF落款。仅用于日级收盘估值，不声称开盘前已知，不提供可成交行情。"
+    },
+    {
+      "symbol": "000858.SZ",
+      "day": "20151022",
+      "full_day": true,
+      "available_on": "20151020",
+      "source": "https://static.cninfo.com.cn/finalpage/2015-10-20/1201708894.PDF",
+      "source_sha256": "289671d8f3174484cab18dcf651dc7cc2150de4462f0995d528d8f92606d0dac",
+      "pages": "1",
+      "note": "采用当日已公开的最新初停或续停公告，持续停牌状态以当时原文为据；7月29日13:00开始的半日停牌不作全天登记，10月31日公开的复牌公告未前置。available_on取巨潮公开日而非PDF落款。仅用于日级收盘估值，不声称开盘前已知，不提供可成交行情。"
+    },
+    {
+      "symbol": "000858.SZ",
+      "day": "20151023",
+      "full_day": true,
+      "available_on": "20151020",
+      "source": "https://static.cninfo.com.cn/finalpage/2015-10-20/1201708894.PDF",
+      "source_sha256": "289671d8f3174484cab18dcf651dc7cc2150de4462f0995d528d8f92606d0dac",
+      "pages": "1",
+      "note": "采用当日已公开的最新初停或续停公告，持续停牌状态以当时原文为据；7月29日13:00开始的半日停牌不作全天登记，10月31日公开的复牌公告未前置。available_on取巨潮公开日而非PDF落款。仅用于日级收盘估值，不声称开盘前已知，不提供可成交行情。"
+    },
+    {
+      "symbol": "000858.SZ",
+      "day": "20151026",
+      "full_day": true,
+      "available_on": "20151020",
+      "source": "https://static.cninfo.com.cn/finalpage/2015-10-20/1201708894.PDF",
+      "source_sha256": "289671d8f3174484cab18dcf651dc7cc2150de4462f0995d528d8f92606d0dac",
+      "pages": "1",
+      "note": "采用当日已公开的最新初停或续停公告，持续停牌状态以当时原文为据；7月29日13:00开始的半日停牌不作全天登记，10月31日公开的复牌公告未前置。available_on取巨潮公开日而非PDF落款。仅用于日级收盘估值，不声称开盘前已知，不提供可成交行情。"
+    },
+    {
+      "symbol": "000858.SZ",
+      "day": "20151027",
+      "full_day": true,
+      "available_on": "20151020",
+      "source": "https://static.cninfo.com.cn/finalpage/2015-10-20/1201708894.PDF",
+      "source_sha256": "289671d8f3174484cab18dcf651dc7cc2150de4462f0995d528d8f92606d0dac",
+      "pages": "1",
+      "note": "采用当日已公开的最新初停或续停公告，持续停牌状态以当时原文为据；7月29日13:00开始的半日停牌不作全天登记，10月31日公开的复牌公告未前置。available_on取巨潮公开日而非PDF落款。仅用于日级收盘估值，不声称开盘前已知，不提供可成交行情。"
+    },
+    {
+      "symbol": "000858.SZ",
+      "day": "20151028",
+      "full_day": true,
+      "available_on": "20151028",
+      "source": "https://static.cninfo.com.cn/finalpage/2015-10-28/1201732204.PDF",
+      "source_sha256": "04ca5ac6130d9be861d1b538ad5e51ec1446a18ff514e89cc400b7896250e94e",
+      "pages": "1",
+      "note": "采用当日已公开的最新初停或续停公告，持续停牌状态以当时原文为据；7月29日13:00开始的半日停牌不作全天登记，10月31日公开的复牌公告未前置。available_on取巨潮公开日而非PDF落款。仅用于日级收盘估值，不声称开盘前已知，不提供可成交行情。"
+    },
+    {
+      "symbol": "000858.SZ",
+      "day": "20151029",
+      "full_day": true,
+      "available_on": "20151028",
+      "source": "https://static.cninfo.com.cn/finalpage/2015-10-28/1201732204.PDF",
+      "source_sha256": "04ca5ac6130d9be861d1b538ad5e51ec1446a18ff514e89cc400b7896250e94e",
+      "pages": "1",
+      "note": "采用当日已公开的最新初停或续停公告，持续停牌状态以当时原文为据；7月29日13:00开始的半日停牌不作全天登记，10月31日公开的复牌公告未前置。available_on取巨潮公开日而非PDF落款。仅用于日级收盘估值，不声称开盘前已知，不提供可成交行情。"
+    },
+    {
+      "symbol": "000858.SZ",
+      "day": "20151030",
+      "full_day": true,
+      "available_on": "20151028",
+      "source": "https://static.cninfo.com.cn/finalpage/2015-10-28/1201732204.PDF",
+      "source_sha256": "04ca5ac6130d9be861d1b538ad5e51ec1446a18ff514e89cc400b7896250e94e",
+      "pages": "1",
+      "note": "采用当日已公开的最新初停或续停公告，持续停牌状态以当时原文为据；7月29日13:00开始的半日停牌不作全天登记，10月31日公开的复牌公告未前置。available_on取巨潮公开日而非PDF落款。仅用于日级收盘估值，不声称开盘前已知，不提供可成交行情。"
     }
   ],
   "industry_conflicts": [
@@ -373,9 +1023,10 @@
       },
       "available_on": "20210708",
       "stock_list_date": "20210715",
-      "source": "https://pdf.dfcfw.com/pdf/H2_AN202107071502359554_1.pdf",
-      "pages": "1—2",
-      "note": "中远海控2021-028实施公告：2020年度仅以资本公积每股转增0.3股，不产生现金派息；现金付款日不适用。"
+      "source": "https://static.cninfo.com.cn/finalpage/2021-07-08/1210437726.PDF",
+      "source_sha256": "07589b85ebd4cec9135d5a3439122d45bb1c84cc45803548dbd5ec286c00c808",
+      "pages": "1—3",
+      "note": "中远海控2021-028原实施公告：2020年度A股该次方案以股本溢价资本公积每股转增0.3股；20210713登记、20210714除权、20210715新增无限售股份上市。该次纯转增无现金组件，原始cash_div_tax/pay_date保留None，规范现金0仅表示该次事件，无全年现金结论。官方公开日及落款均20210708，不提前到镜像文件名日期；H股实施不属于本公告范围。分钟级可得性及个人零碎股分配未核实。"
     },
     {
       "expected": {
@@ -390,11 +1041,52 @@
         "pay_date": null,
         "imp_ann_date": "20200402"
       },
-      "available_on": "20210317",
+      "available_on": "20200402",
       "stock_list_date": "20200410",
-      "source": "https://static.cninfo.com.cn/finalpage/2021-03-17/1209393844.PDF",
-      "pages": "24、40",
-      "note": "方大特钢2020年报确认2019年度现金派息为零、每股转增0.49股；新增股上市日2020-04-10。登记及除权日保留接口原值，现金付款日不适用。此项证据仅从该年报披露日起生效。"
+      "source": "https://static.cninfo.com.cn/finalpage/2020-04-02/1207447414.PDF",
+      "source_sha256": "d48600b8aafea89fa19c613e96a0b8f3329fcfa1dd515c973bc80fbf1119ead3",
+      "pages": "1—3",
+      "note": "方大特钢临2020-025原实施公告：2019年度该次方案以股本溢价资本公积每股转增0.49股；20200408登记、20200409除权、20200410新增无限售股份上市。该次纯转增无现金组件，原始cash_div_tax/pay_date保留None，规范现金0仅表示该次事件，无全年现金结论。本项依据为20200402官方公开的实施公告；旧20210317年报是另存归档的晚披露依据，不改其日期。分钟级可得性及个人零碎股分配未核实。"
+    },
+    {
+      "expected": {
+        "ts_code": "002003.SZ",
+        "end_date": "20070630",
+        "ann_date": "20070911",
+        "div_proc": "实施",
+        "cash_div_tax": null,
+        "stk_div": 0.3,
+        "record_date": "20070924",
+        "ex_date": "20070925",
+        "pay_date": null,
+        "imp_ann_date": "20070919"
+      },
+      "available_on": "20070919",
+      "stock_list_date": "20070925",
+      "source": "https://static.cninfo.com.cn/finalpage/2007-09-19/31741744.PDF",
+      "source_sha256": "1e421e60160ad279da94cb4ee71a1b2186f2b567e59be4c4df5b25d9694bf1cd",
+      "pages": "1—3",
+      "note": "伟星股份2007-039原实施公告：2007半年度以资本公积每10股转增3股；20070924登记，20070925除权、股份到账及新增无限售股份上市。该次纯转增无现金组件，原始cash_div_tax/pay_date保留None，规范现金0仅表示该次事件，无全年现金结论。官方公开日及落款均20070919；分钟级可得性未核实，个人零碎股分配不据此推定。"
+    },
+    {
+      "expected": {
+        "ts_code": "600060.SH",
+        "end_date": "20111231",
+        "ann_date": "20120531",
+        "div_proc": "实施",
+        "cash_div_tax": null,
+        "stk_div": 0.5,
+        "record_date": "20120704",
+        "ex_date": "20120705",
+        "pay_date": null,
+        "imp_ann_date": "20120629"
+      },
+      "available_on": "20120629",
+      "stock_list_date": "20120706",
+      "source": "https://static.cninfo.com.cn/finalpage/2012-06-29/61196074.PDF",
+      "source_sha256": "6edbecec640c2c27c9e5963b50bd58960b166db93427097590527cbb6d80d342",
+      "pages": "1—3",
+      "note": "海信电器2012-18原实施公告：2011年度方案仅以资本公积每10股转增5股；20120704登记、20120705除权、20120706新增无限售股份上市。该次纯转增无现金组件，原始cash_div_tax/pay_date保留None，规范现金0仅表示该次事件，无全年现金结论。官方公开日及落款均20120629；不能以除权日代替上市日，分钟级可得性及个人零碎股分配未核实。"
     }
   ],
   "stock_distributions": [
@@ -659,6 +1351,46 @@
       "source_sha256": "0e41b1308954a594f0ffa098d8f235c11aa638003b2b45c29599f875d3bc0ab9",
       "pages": "1—5",
       "note": "鄂尔多斯临2022-035：以1427947069股为基数，每股税前现金2元、股票发行溢价形成的资本公积金转增0.4（非利润送股）。A股登记20220610、除权及现金20220613，新增无限售股份上市20220614；不可套用B股登记20220615、上市20220617及现金20220623。公告公开及落款均20220607，分钟时点未核实。100股对应40整股；公告未细述零碎股分配，不能自行舍入。"
+    },
+    {
+      "expected": {
+        "ts_code": "600000.SH",
+        "end_date": "20091231",
+        "ann_date": "20100429",
+        "div_proc": "实施",
+        "cash_div_tax": 0.15,
+        "stk_div": 0.3,
+        "record_date": "20100609",
+        "ex_date": "20100610",
+        "pay_date": "20100618",
+        "imp_ann_date": "20100604"
+      },
+      "source": "https://static.cninfo.com.cn/finalpage/2010-06-04/58030996.PDF",
+      "source_sha256": "2c1943bb216cf5550ac67efa59cb24f5048e88b6d4caa71bbed478c294cbcce0",
+      "available_on": "20100604",
+      "pages": "3",
+      "stock_list_date": "20100611",
+      "note": "浦发银行FY2009利润送红股，每股送0.3股；上市日与除权日分开。个人尾股分配仍不模拟，出现不足一股继续停止；公司整数总配额不推为账户统一四舍五入。"
+    },
+    {
+      "expected": {
+        "ts_code": "600000.SH",
+        "end_date": "20101231",
+        "ann_date": "20110429",
+        "div_proc": "实施",
+        "cash_div_tax": 0.16,
+        "stk_div": 0.3,
+        "record_date": "20110602",
+        "ex_date": "20110603",
+        "pay_date": "20110613",
+        "imp_ann_date": "20110530"
+      },
+      "source": "https://static.cninfo.com.cn/finalpage/2011-05-30/59489009.PDF",
+      "source_sha256": "476595ef2b7cc29f0bed0b9083130257082d4f08e9b578b17d3418b3f84341b0",
+      "available_on": "20110530",
+      "pages": "3",
+      "stock_list_date": "20110607",
+      "note": "浦发银行FY2010利润送红股，每股送0.3股；上市日与除权日分开。个人尾股分配仍不模拟，出现不足一股继续停止；公司整数总配额不推为账户统一四舍五入。"
     }
   ],
   "financial_zero_fields": [
@@ -1141,6 +1873,78 @@
       "source_sha256": "43b53118a857b421e48a566aa1d40dfdc166654707b7e362b852b7796a21985f",
       "pages": "10、11、12",
       "note": "2014三季报合并资产负债表期末目标栏为空白；原文所有非空流动负债明细与流动负债合计精确勾稽，支持该精确原始行目标字段为零，不是原文明确打印0。只生成带原文证据的规范视图，原始None保留；不推及其他字段、期间或版本，不等于无债务或完整投资资格。"
+    },
+    {
+      "expected": {
+        "ts_code": "000726.SZ",
+        "ann_date": "20160427",
+        "f_ann_date": "20160427",
+        "end_date": "20160331",
+        "report_type": "1",
+        "comp_type": "1",
+        "total_share": 955758496.0,
+        "money_cap": 757125291.06,
+        "st_borr": 869165093.98,
+        "lt_borr": 7970031.94,
+        "non_cur_liab_due_1y": null,
+        "total_liab": 1753259623.62,
+        "total_assets": 9059317160.04
+      },
+      "field": "non_cur_liab_due_1y",
+      "value": "0",
+      "available_on": "20160427",
+      "source": "https://static.cninfo.com.cn/finalpage/2016-04-27/1202247914.PDF",
+      "source_sha256": "abd06b0482ca3538671ea86d41e70ec5d768ac52ba7ac16bcea4947d93703a15",
+      "pages": "11—13（合并表；目标栏及流动负债全表在12页）",
+      "note": "仅修正该期该合并报表的精确原始行。官方季报合并资产负债表目标期末栏为空；已逐项核对全部流动负债非空项目，其合计与披露流动负债总额1563462098.60元精确一致，无未解释余额，支持本空栏为零的源限定解释。原文并未在目标栏印出数字0；不得泛化为空值自动补零、母公司报表、其他季度或不同版本。available_on取巨潮公告公开日，仅用于当日收盘及以后日级研究，不宣称开盘前已知。"
+    },
+    {
+      "expected": {
+        "ts_code": "000858.SZ",
+        "ann_date": "20150429",
+        "f_ann_date": "20150429",
+        "end_date": "20150331",
+        "report_type": "1",
+        "comp_type": "1",
+        "total_share": 3795966720.0,
+        "money_cap": 24216910201.84,
+        "st_borr": null,
+        "lt_borr": null,
+        "non_cur_liab_due_1y": null,
+        "total_liab": 6038555295.75,
+        "total_assets": 48665558998.51
+      },
+      "field": "st_borr",
+      "value": "0",
+      "available_on": "20150429",
+      "source": "https://static.cninfo.com.cn/finalpage/2015-04-29/1200930860.PDF",
+      "source_sha256": "3953c85680df35528898afe0f6acc98e3698922a4edc330f97d12aec924c3381",
+      "pages": "8—10（合并表；短期借款在9页，一年内到期非流动负债及合计在10页）",
+      "note": "仅修正该期该合并报表的精确原始行。官方季报合并资产负债表目标期末栏为空；已逐项核对全部流动负债非空项目，其合计与披露流动负债总额5884964631.74元精确一致，无未解释余额，支持本空栏为零的源限定解释。原文并未在目标栏印出数字0；不得泛化为空值自动补零、母公司报表、其他季度或不同版本。available_on取巨潮公告公开日，仅用于当日收盘及以后日级研究，不宣称开盘前已知。"
+    },
+    {
+      "expected": {
+        "ts_code": "000858.SZ",
+        "ann_date": "20150429",
+        "f_ann_date": "20150429",
+        "end_date": "20150331",
+        "report_type": "1",
+        "comp_type": "1",
+        "total_share": 3795966720.0,
+        "money_cap": 24216910201.84,
+        "st_borr": null,
+        "lt_borr": null,
+        "non_cur_liab_due_1y": null,
+        "total_liab": 6038555295.75,
+        "total_assets": 48665558998.51
+      },
+      "field": "non_cur_liab_due_1y",
+      "value": "0",
+      "available_on": "20150429",
+      "source": "https://static.cninfo.com.cn/finalpage/2015-04-29/1200930860.PDF",
+      "source_sha256": "3953c85680df35528898afe0f6acc98e3698922a4edc330f97d12aec924c3381",
+      "pages": "8—10（合并表；短期借款在9页，一年内到期非流动负债及合计在10页）",
+      "note": "仅修正该期该合并报表的精确原始行。官方季报合并资产负债表目标期末栏为空；已逐项核对全部流动负债非空项目，其合计与披露流动负债总额5884964631.74元精确一致，无未解释余额，支持本空栏为零的源限定解释。原文并未在目标栏印出数字0；不得泛化为空值自动补零、母公司报表、其他季度或不同版本。available_on取巨潮公告公开日，仅用于当日收盘及以后日级研究，不宣称开盘前已知。"
     }
   ],
   "zero_cash_years": [
@@ -1217,6 +2021,166 @@
         }
       ],
       "note": "劲嘉股份2024年度全年现金分红为0：中报确认中期不派，2025-030专项公告列全年现金总额0，2024年度股东大会于2025-06-27通过年度不分配议案，决议2025-06-28可用。此前仅预案，不回填。2024日历年支付的2023年度现金不属于FY2024。没有创建除息、派息或现金事件。"
+    },
+    {
+      "symbol": "002081.SZ",
+      "period": "20211231",
+      "available_on": "20220524",
+      "expected": [
+        {
+          "ts_code": "002081.SZ",
+          "end_date": "20211231",
+          "ann_date": "20220430",
+          "div_proc": "预案",
+          "cash_div_tax": 0.0,
+          "stk_div": 0.0,
+          "record_date": null,
+          "ex_date": null,
+          "pay_date": null,
+          "imp_ann_date": null
+        },
+        {
+          "ts_code": "002081.SZ",
+          "end_date": "20211231",
+          "ann_date": "20220524",
+          "div_proc": "股东大会通过",
+          "cash_div_tax": null,
+          "stk_div": 0.0,
+          "record_date": null,
+          "ex_date": null,
+          "pay_date": null,
+          "imp_ann_date": null
+        },
+        {
+          "ts_code": "002081.SZ",
+          "end_date": "20210630",
+          "ann_date": "20210831",
+          "div_proc": "预案",
+          "cash_div_tax": 0.0,
+          "stk_div": 0.0,
+          "record_date": null,
+          "ex_date": null,
+          "pay_date": null,
+          "imp_ann_date": null
+        },
+        {
+          "ts_code": "002081.SZ",
+          "end_date": "20210630",
+          "ann_date": "20210831",
+          "div_proc": "股东大会通过",
+          "cash_div_tax": null,
+          "stk_div": 0.0,
+          "record_date": null,
+          "ex_date": null,
+          "pay_date": null,
+          "imp_ann_date": null
+        }
+      ],
+      "cash_dps": "0",
+      "source": "https://static.cninfo.com.cn/finalpage/2022-05-24/1213462734.PDF",
+      "source_sha256": "94be894554a4560d6a852ef938387c2a36082d032c346eb4cba640282edd99cc",
+      "pages": "1、3、8",
+      "supporting_sources": [
+        {
+          "source": "https://disc.static.szse.cn/disc/disk03/finalpage/2022-04-30/340865d8-d272-4ee9-9949-b0eedc7aab75.PDF",
+          "source_sha256": "6a2641424adf531b438338593bb4858d4c2a0bc633cd14de85adfeb1a63c1364",
+          "available_on": "20220430",
+          "pages": "1—2"
+        },
+        {
+          "source": "https://static.cninfo.com.cn/finalpage/2022-04-30/1213249916.PDF",
+          "source_sha256": "9164e625beb65afe2c5cb49c68eb68505f01e9f4b298c2d5f7e3ae1f76840f93",
+          "available_on": "20220430",
+          "pages": "2、40—41"
+        },
+        {
+          "source": "https://static.cninfo.com.cn/finalpage/2021-08-31/1210925245.PDF",
+          "source_sha256": "55270036eab946eb19bece873208be84f31d67a6fcc9fc568719ff0d803afd16",
+          "available_on": "20210831",
+          "pages": "1"
+        }
+      ],
+      "note": "金螳螂FY2021全年现金股利为0：2021中报明确中期不派；2021年报40页现金分红金额为0.00，249834424.52元为回购股份回报，不能计作持股现金派息。2022-007专项说明提出全年不派现金、不送红、不转增；2021年度股东大会2022-05-23通过，决议2022-05-24公开后才可用。仅登记已核年度决策，不创建除息、到账或应收事件；不宣称此年度未来永不能修订。后续可用原行变化、重复或正现金冲突须阻断并重核。"
+    },
+    {
+      "symbol": "601515.SH",
+      "period": "20221231",
+      "source": "https://static.cninfo.com.cn/finalpage/2023-05-13/1216811013.PDF",
+      "source_sha256": "2b7759670a485a35021f0b109b409db04ba69b4b626295bfa64275d241e559f3",
+      "available_on": "20230513",
+      "pages": "1,2,3,8",
+      "expected": [
+        {
+          "ts_code": "601515.SH",
+          "end_date": "20221231",
+          "ann_date": "20230411",
+          "div_proc": "预案",
+          "cash_div_tax": 0.0,
+          "stk_div": 0.0,
+          "record_date": null,
+          "ex_date": null,
+          "pay_date": null,
+          "imp_ann_date": null
+        },
+        {
+          "ts_code": "601515.SH",
+          "end_date": "20221231",
+          "ann_date": "20230513",
+          "div_proc": "股东大会通过",
+          "cash_div_tax": null,
+          "stk_div": 0.0,
+          "record_date": null,
+          "ex_date": null,
+          "pay_date": null,
+          "imp_ann_date": null
+        },
+        {
+          "ts_code": "601515.SH",
+          "end_date": "20220630",
+          "ann_date": "20220830",
+          "div_proc": "预案",
+          "cash_div_tax": 0.0,
+          "stk_div": 0.0,
+          "record_date": null,
+          "ex_date": null,
+          "pay_date": null,
+          "imp_ann_date": null
+        },
+        {
+          "ts_code": "601515.SH",
+          "end_date": "20220630",
+          "ann_date": "20220830",
+          "div_proc": "股东大会通过",
+          "cash_div_tax": null,
+          "stk_div": 0.0,
+          "record_date": null,
+          "ex_date": null,
+          "pay_date": null,
+          "imp_ann_date": null
+        }
+      ],
+      "cash_dps": "0",
+      "supporting_sources": [
+        {
+          "source": "https://static.cninfo.com.cn/finalpage/2023-04-11/1216371845.PDF",
+          "source_sha256": "2d36518ea42000304bc09ff6c7ff55fe7835fc7598830ecc1988aba972fdecf7",
+          "available_on": "20230411",
+          "pages": "1,2,3"
+        },
+        {
+          "source": "https://static.cninfo.com.cn/finalpage/2022-08-30/1214444747.PDF",
+          "source_sha256": "0a9e23407db7fcaa5192be5635af23c06c8fd8c6e9676ad2698db0927b51de96",
+          "available_on": "20220830",
+          "pages": "2,26"
+        },
+        {
+          "source": "https://static.cninfo.com.cn/finalpage/2023-04-11/1216371855.PDF",
+          "source_sha256": "3651cffd11ba86aec003bb25425062c824056d9b2eca641e58b1ec6b69aaea81",
+          "available_on": "20230411",
+          "pages": "2,53,54"
+        }
+      ],
+      "note": "FY2022半年及全年均不派现金、不送股、不转增；2023-05-12 AGM通过，2023-05-13公开才确认已批准全年零。2022日历年已付691089138.90属于FY2021，不计入FY2022。保留原始NULL，不制造零金额现金事件或股权登记日。"
     }
   ],
   "cash_dividend_components": [
@@ -1261,6 +2225,848 @@
       "source_sha256": "15feaa25f08f36c07f07c5830cc9f10745a7203bc515eabd77028f8cc451137f",
       "pages": "1—2",
       "note": "兖矿能源临2023-044实施公告：2022年度普通股息每股税前3.07元、特别股息1.23元，合计4.30元；两条接口记录是同一财政年度的一次派息，不能生成2023年度分红。每股送0.5股，只保留年度原始行的送股比例；分配前基数4,961,360,480股，新增A股2023年7月17日上市。"
+    }
+  ],
+  "cash_basis": [
+    {
+      "expected": {
+        "ts_code": "600578.SH",
+        "end_date": "20120630",
+        "ann_date": "20120824",
+        "div_proc": "实施",
+        "cash_div_tax": 0.25,
+        "stk_div": 0.0,
+        "record_date": "20120920",
+        "ex_date": "20120921",
+        "pay_date": "20120927",
+        "imp_ann_date": "20120917"
+      },
+      "distribution_shares": "787225548",
+      "total_cash": "196806387.00",
+      "basis": "actual_cash_divided_by_dps",
+      "source": "https://static.cninfo.com.cn/finalpage/2013-04-11/62345502.PDF",
+      "source_sha256": "25f4bd497814bb7a03fb6fd16b8f6ccc0364694f7762f28b0ab4f243eb4bc7a3",
+      "available_on": "20130411",
+      "pages": "1、2、3、11",
+      "note": "京能热电FY2012中期已实施每股税前0.25元，董事会原文确认实际现金196,806,387.00元；现金除以DPS得787,225,548股，并与年末股数减2012年12月增发股数勾稽。股数是原文金额推导，不是直接印出的登记日股数表。此后证自2013-04-11可用；普通/特别分类仍未核实，不将特别金额补0，不更改实施原行或账户每股现金。",
+      "annual_composition": {
+        "period": "20121231",
+        "expected": {
+          "ts_code": "600578.SH",
+          "end_date": "20121231",
+          "ann_date": "20130504",
+          "div_proc": "股东大会通过",
+          "cash_div_tax": null,
+          "stk_div": 0.0,
+          "record_date": null,
+          "ex_date": null,
+          "pay_date": null,
+          "imp_ann_date": null
+        },
+        "total_cash": "196806387.00",
+        "additional_cash": "0.00",
+        "includes_expected_event": true,
+        "source": "https://static.cninfo.com.cn/finalpage/2013-05-04/62456673.PDF",
+        "source_sha256": "65c2c95136211cc38338acddace29cdc2e7c95ebaca8784b0cb490ae59578619",
+        "available_on": "20130504",
+        "pages": "1、2、4、5",
+        "supporting_sources": [
+          {
+            "source": "https://static.cninfo.com.cn/finalpage/2013-04-11/62345502.PDF",
+            "source_sha256": "25f4bd497814bb7a03fb6fd16b8f6ccc0364694f7762f28b0ab4f243eb4bc7a3",
+            "available_on": "20130411",
+            "pages": "1、2、3、11"
+          }
+        ],
+        "note": "FY2012年度方案包含已完成的上述中期现金，不再追加末期分配、也不转增。股东大会决议2013-05-04公开才确认全年组成；完整年末NULL行保持不变，不创造另一次现金事件。此独立后续证明不提前到外层2013-04-11生效。"
+      }
+    },
+    {
+      "expected": {
+        "ts_code": "000726.SZ",
+        "end_date": "20121231",
+        "ann_date": "20130423",
+        "div_proc": "实施",
+        "cash_div_tax": 0.28,
+        "stk_div": 0.0,
+        "record_date": "20130620",
+        "ex_date": "20130621",
+        "pay_date": "20130621",
+        "imp_ann_date": "20130615"
+      },
+      "distribution_shares": "960057496",
+      "total_cash": "268816098.88",
+      "source": "https://static.cninfo.com.cn/finalpage/2015-04-04/1200787593.PDF",
+      "source_sha256": "835f22648d396da7a293ecc89c7873e79840ecf6c6a9c2a56edc29bbe45923c8",
+      "available_on": "20150404",
+      "pages": "25-26",
+      "note": "2014更新年报明确FY2012回购库存B股48837304不参与分红；实际基数960057496，0.28元/股，实际总额268816098.88。仅据20150404事后公开依据修正公司现金代理，不改个人DPS、支付日或原始行。",
+      "basis": "actual_cash_divided_by_dps"
+    },
+    {
+      "expected": {
+        "ts_code": "600578.SH",
+        "end_date": "20130630",
+        "ann_date": "20130911",
+        "div_proc": "实施",
+        "cash_div_tax": 0.1,
+        "stk_div": 1.0,
+        "record_date": "20131022",
+        "ex_date": "20131023",
+        "pay_date": "20131028",
+        "imp_ann_date": "20131017"
+      },
+      "distribution_shares": "2308660477",
+      "total_cash": "230866047.70",
+      "source": "https://static.cninfo.com.cn/finalpage/2015-04-02/1200778976.PDF",
+      "source_sha256": "17b4a8f265f7b0cb1b7b4195f85621d91003d434fd21c119ef3cef4c0174b80d",
+      "available_on": "20150402",
+      "pages": "22-23,72,134",
+      "note": "2014年报p72载2013年3月增发后2308660477股、10月10转10后4617320954股；p134上期应付普通股股利230866047.70与中期raw0.1元/股闭合；年末0.2元/股923464190.80及全年1154330238.50闭合。仅据20150402公开年报修正中期公司派息基数；不把全年等价DPS0.25替换原始0.1/0.2，不认证送转上市日。",
+      "basis": "actual_cash_divided_by_dps"
+    },
+    {
+      "expected": {
+        "ts_code": "600123.SH",
+        "end_date": "20230930",
+        "ann_date": "20240113",
+        "div_proc": "实施",
+        "cash_div_tax": 0.75,
+        "stk_div": 0.0,
+        "record_date": "20240207",
+        "ex_date": "20240208",
+        "pay_date": "20240208",
+        "imp_ann_date": "20240202"
+      },
+      "distribution_shares": "1485120000",
+      "total_cash": "1113840000.00",
+      "basis": "source_exact_base",
+      "source": "https://static.cninfo.com.cn/finalpage/2024-02-02/1219065374.PDF",
+      "source_sha256": "e6d884a41f0b39d51620b7f38bb492a84c74f32166050247f889446dbc1bdadb",
+      "available_on": "20240202",
+      "pages": "1,2",
+      "note": "2023年前三季度单次已实施事件：20240202实施公告明示1485120000股、税前每股0.75元、总额1113840000；登记20240207，除息及发放20240208。不新增付款、不改FY2023年度归属，普通/特别分类未单列核实。",
+      "annual_composition": {
+        "period": "20231231",
+        "total_cash": "1113840000.00",
+        "additional_cash": "0",
+        "includes_expected_event": true,
+        "source": "https://static.cninfo.com.cn/finalpage/2024-05-18/1220090536.PDF",
+        "source_sha256": "876a877d2eb060fbd3356f6305e2271fe789fca6707b6964e8f211edfdc41e36",
+        "available_on": "20240518",
+        "pages": "1,3,4,7",
+        "supporting_sources": [
+          {
+            "source": "https://static.cninfo.com.cn/finalpage/2024-04-23/1219734844.PDF",
+            "source_sha256": "febe6d66d51756b075984d7d3da1d0c5ae6557f605ef623a45eeb03a04c64842",
+            "available_on": "20240423",
+            "pages": "1,2"
+          },
+          {
+            "source": "https://static.cninfo.com.cn/finalpage/2024-02-02/1219065374.PDF",
+            "source_sha256": "e6d884a41f0b39d51620b7f38bb492a84c74f32166050247f889446dbc1bdadb",
+            "available_on": "20240202",
+            "pages": "1,2"
+          }
+        ],
+        "note": "全年组成=已实施前三季度1113840000+获批Q4不追加0。两条年末原行均须逐字绑定，不能删预案0或把AGM NULL补成0；20240518前不宣称完整年度组成。该对象不是第二个派息事件。",
+        "expected": [
+          {
+            "ts_code": "600123.SH",
+            "end_date": "20231231",
+            "ann_date": "20240423",
+            "div_proc": "预案",
+            "cash_div_tax": 0.0,
+            "stk_div": 0.0,
+            "record_date": null,
+            "ex_date": null,
+            "pay_date": null,
+            "imp_ann_date": null
+          },
+          {
+            "ts_code": "600123.SH",
+            "end_date": "20231231",
+            "ann_date": "20240518",
+            "div_proc": "股东大会通过",
+            "cash_div_tax": null,
+            "stk_div": 0.0,
+            "record_date": null,
+            "ex_date": null,
+            "pay_date": null,
+            "imp_ann_date": null
+          }
+        ]
+      }
+    },
+    {
+      "expected": {
+        "ts_code": "600000.SH",
+        "end_date": "20091231",
+        "ann_date": "20100429",
+        "div_proc": "实施",
+        "cash_div_tax": 0.15,
+        "stk_div": 0.3,
+        "record_date": "20100609",
+        "ex_date": "20100610",
+        "pay_date": "20100618",
+        "imp_ann_date": "20100604"
+      },
+      "distribution_shares": "8830045640",
+      "total_cash": "1324506846.00",
+      "basis": "printed_share_base_times_gross_dps",
+      "source": "https://static.cninfo.com.cn/finalpage/2010-06-04/58030996.PDF",
+      "source_sha256": "2c1943bb216cf5550ac67efa59cb24f5048e88b6d4caa71bbed478c294cbcce0",
+      "available_on": "20100604",
+      "pages": "1、2",
+      "note": "浦发银行FY2009实施原文所列派息基数及税前DPS；现金总额为两者精确相乘。仅核实本次实施，不确认全年组成或普通/特别经济分类。2009、2010的现金基数均为送股前股数，不能改用送股后或当前股数；原始NULL保留，账户仍按个人登记日持股数乘DPS。"
+    },
+    {
+      "expected": {
+        "ts_code": "600000.SH",
+        "end_date": "20101231",
+        "ann_date": "20110429",
+        "div_proc": "实施",
+        "cash_div_tax": 0.16,
+        "stk_div": 0.3,
+        "record_date": "20110602",
+        "ex_date": "20110603",
+        "pay_date": "20110613",
+        "imp_ann_date": "20110530"
+      },
+      "distribution_shares": "14348824165",
+      "total_cash": "2295811866.40",
+      "basis": "printed_share_base_times_gross_dps",
+      "source": "https://static.cninfo.com.cn/finalpage/2011-05-30/59489009.PDF",
+      "source_sha256": "476595ef2b7cc29f0bed0b9083130257082d4f08e9b578b17d3418b3f84341b0",
+      "available_on": "20110530",
+      "pages": "1、2",
+      "note": "浦发银行FY2010实施原文所列派息基数及税前DPS；现金总额为两者精确相乘。仅核实本次实施，不确认全年组成或普通/特别经济分类。2009、2010的现金基数均为送股前股数，不能改用送股后或当前股数；原始NULL保留，账户仍按个人登记日持股数乘DPS。"
+    },
+    {
+      "expected": {
+        "ts_code": "600000.SH",
+        "end_date": "20111231",
+        "ann_date": "20120614",
+        "div_proc": "实施",
+        "cash_div_tax": 0.3,
+        "stk_div": 0.0,
+        "record_date": "20120625",
+        "ex_date": "20120626",
+        "pay_date": "20120629",
+        "imp_ann_date": "20120619"
+      },
+      "distribution_shares": "18653471415",
+      "total_cash": "5596041424.50",
+      "basis": "printed_share_base_times_gross_dps",
+      "source": "https://static.cninfo.com.cn/finalpage/2012-06-19/61154261.PDF",
+      "source_sha256": "439759a18f39c466be2c0b2aff42ea6c445fd07338c1f3684c436e58852e282e",
+      "available_on": "20120619",
+      "pages": "1、2",
+      "note": "浦发银行FY2011实施原文所列派息基数及税前DPS；现金总额为两者精确相乘。仅核实本次实施，不确认全年组成或普通/特别经济分类。2009、2010的现金基数均为送股前股数，不能改用送股后或当前股数；原始NULL保留，账户仍按个人登记日持股数乘DPS。"
+    },
+    {
+      "expected": {
+        "ts_code": "600000.SH",
+        "end_date": "20121231",
+        "ann_date": "20130517",
+        "div_proc": "实施",
+        "cash_div_tax": 0.55,
+        "stk_div": 0.0,
+        "record_date": "20130531",
+        "ex_date": "20130603",
+        "pay_date": "20130607",
+        "imp_ann_date": "20130527"
+      },
+      "distribution_shares": "18653471415",
+      "total_cash": "10259409278.25",
+      "basis": "printed_share_base_times_gross_dps",
+      "source": "https://static.cninfo.com.cn/finalpage/2013-05-27/62526220.PDF",
+      "source_sha256": "6aaf5ef7ea696f2fe1b31f69fed19dfccde158aae9a5526b0a8274ae2a77be0e",
+      "available_on": "20130527",
+      "pages": "2",
+      "note": "浦发银行FY2012实施原文所列派息基数及税前DPS；现金总额为两者精确相乘。仅核实本次实施，不确认全年组成或普通/特别经济分类。2009、2010的现金基数均为送股前股数，不能改用送股后或当前股数；原始NULL保留，账户仍按个人登记日持股数乘DPS。"
+    },
+    {
+      "expected": {
+        "ts_code": "600000.SH",
+        "end_date": "20131231",
+        "ann_date": "20140527",
+        "div_proc": "实施",
+        "cash_div_tax": 0.66,
+        "stk_div": 0.0,
+        "record_date": "20140623",
+        "ex_date": "20140624",
+        "pay_date": "20140624",
+        "imp_ann_date": "20140617"
+      },
+      "distribution_shares": "18653471415",
+      "total_cash": "12311291133.90",
+      "basis": "printed_share_base_times_gross_dps",
+      "source": "https://static.cninfo.com.cn/finalpage/2014-06-17/64141546.PDF",
+      "source_sha256": "cbc7c603e1863dabc806b2a78b6401ba3a6bcf35544fbbe6d269dd456f9b45c2",
+      "available_on": "20140617",
+      "pages": "1",
+      "note": "浦发银行FY2013实施原文所列派息基数及税前DPS；现金总额为两者精确相乘。仅核实本次实施，不确认全年组成或普通/特别经济分类。2009、2010的现金基数均为送股前股数，不能改用送股后或当前股数；原始NULL保留，账户仍按个人登记日持股数乘DPS。"
+    }
+  ],
+  "annual_cash_decisions": [
+    {
+      "symbol": "000726.SZ",
+      "period": "20141231",
+      "source": "https://static.cninfo.com.cn/finalpage/2015-05-21/1201041599.PDF",
+      "source_sha256": "80eb746e401e7a226c5b4a4100e2c0f2ef28e1b973d4b6b25dfc7a1740cc3555",
+      "available_on": "20150521",
+      "pages": "1、4、5",
+      "cash_dps": "0.50",
+      "total_cash": "477879248.00",
+      "share_count": "955758496",
+      "share_basis": "source_exact_base",
+      "supporting_sources": [
+        {
+          "source": "https://static.cninfo.com.cn/finalpage/2015-03-31/1200764035.PDF",
+          "source_sha256": "c87bb32a42681d9e1e29a08dd27a0a1ca45f56c3873a2cc1c0bf323b112abab6",
+          "available_on": "20150331",
+          "pages": "1、2"
+        },
+        {
+          "source": "https://static.cninfo.com.cn/finalpage/2015-04-04/1200787593.PDF",
+          "source_sha256": "835f22648d396da7a293ecc89c7873e79840ecf6c6a9c2a56edc29bbe45923c8",
+          "available_on": "20150404",
+          "pages": "26"
+        }
+      ],
+      "share_witnesses": [],
+      "classification": "ordinary_proxy_unverified",
+      "known_interim_rows": [
+        {
+          "ts_code": "000726.SZ",
+          "end_date": "20140630",
+          "ann_date": "20140813",
+          "div_proc": "股东大会通过",
+          "cash_div_tax": null,
+          "stk_div": 0.0,
+          "record_date": null,
+          "ex_date": null,
+          "pay_date": null,
+          "imp_ann_date": null
+        }
+      ],
+      "annual_scope": "reported_annual_total",
+      "annual_total_cash": "477879248.00",
+      "remaining_gaps": [
+        "Ordinary/special split unverified; missing special wording or ordinary-share wording does not prove special cash zero.",
+        "Interim NULL remains unchanged; full-year scope is supported by the then-public annual table, not by assigning NULL zero or assuming no later unannounced additions."
+      ],
+      "note": "登记股东大会已批准的该年度现金方案，并以当时公开年度现金表核对年度范围；金额、股数依据均来自批准公开日前已有资料。普通/特别未单独核实，总额作为普通仅能是代理；本登记不决定持续性或交易资格。新增年度范围原文：2014年年度报告（更新后）物理第26页，20150404公开，FY2014现金表列477879248.00元；此来源早于股东大会公开日，不将预案阶段提前视为已批准。中期接口NULL继续保留；按该年度汇总口径核对，不补0、不推定普通/特别拆分，也不承诺未来永不追加。"
+    },
+    {
+      "symbol": "600012.SH",
+      "period": "20141231",
+      "source": "https://static.cninfo.com.cn/finalpage/2015-05-23/1201050718.PDF",
+      "source_sha256": "57eaba58110048a15d43b2c2189d3bc3d7fa3b8e6ff4b1b17c1828ae2907c33f",
+      "available_on": "20150523",
+      "pages": "1、3、5、6",
+      "cash_dps": "0.23",
+      "total_cash": "381480300.00",
+      "share_count": "1658610000",
+      "share_basis": "source_exact_base",
+      "supporting_sources": [
+        {
+          "source": "https://static.cninfo.com.cn/finalpage/2015-03-30/1200760334.PDF",
+          "source_sha256": "1ee67d80d02f3e32324ba81d1fd2b3f1c7e9279bb87b0577a0044586c7200677",
+          "available_on": "20150330",
+          "pages": "1、2、6"
+        },
+        {
+          "source": "https://static.cninfo.com.cn/finalpage/2015-05-13/1201005458.PDF",
+          "source_sha256": "0aa96ddd84fe7a162fa4735886f4471184e473e7848b3e144cb1587c4e63542f",
+          "available_on": "20150513",
+          "pages": "27"
+        }
+      ],
+      "share_witnesses": [],
+      "classification": "ordinary_proxy_unverified",
+      "known_interim_rows": [
+        {
+          "ts_code": "600012.SH",
+          "end_date": "20140630",
+          "ann_date": "20140825",
+          "div_proc": "股东大会通过",
+          "cash_div_tax": null,
+          "stk_div": 0.0,
+          "record_date": null,
+          "ex_date": null,
+          "pay_date": null,
+          "imp_ann_date": null
+        }
+      ],
+      "annual_scope": "reported_annual_total",
+      "annual_total_cash": "381480300.00",
+      "remaining_gaps": [
+        "Ordinary/special split unverified; missing special wording or ordinary-share wording does not prove special cash zero.",
+        "Interim NULL remains unchanged; full-year scope is supported by the then-public annual table, not by assigning NULL zero or assuming no later unannounced additions."
+      ],
+      "note": "登记股东大会已批准的该年度现金方案，并以当时公开年度现金表核对年度范围；金额、股数依据均来自批准公开日前已有资料。普通/特别未单独核实，总额作为普通仅能是代理；本登记不决定持续性或交易资格。新增年度范围原文：2014年年度股东大会会议资料物理第27页，20150513公开，FY2014现金表列381480.30千元；此来源早于股东大会公开日，不将预案阶段提前视为已批准。中期接口NULL继续保留；按该年度汇总口径核对，不补0、不推定普通/特别拆分，也不承诺未来永不追加。"
+    },
+    {
+      "symbol": "600578.SH",
+      "period": "20141231",
+      "source": "https://static.cninfo.com.cn/finalpage/2015-05-30/1201083688.PDF",
+      "source_sha256": "5ef9348da1bbf439bd6803fe7ebc6618421dd3663c3fa90509116419b040864f",
+      "available_on": "20150530",
+      "pages": "1、3、16",
+      "cash_dps": "0.20",
+      "total_cash": "923464190.80",
+      "share_count": "4617320954",
+      "share_basis": "source_exact_base",
+      "supporting_sources": [
+        {
+          "source": "https://static.cninfo.com.cn/finalpage/2015-04-02/1200778968.PDF",
+          "source_sha256": "e1b313dbffb31c905d605b089eab80107943a1980d6996e49ac3e67964975260",
+          "available_on": "20150402",
+          "pages": "1、2、4"
+        },
+        {
+          "source": "https://static.cninfo.com.cn/finalpage/2015-04-02/1200778976.PDF",
+          "source_sha256": "17b4a8f265f7b0cb1b7b4195f85621d91003d434fd21c119ef3cef4c0174b80d",
+          "available_on": "20150402",
+          "pages": "23"
+        }
+      ],
+      "share_witnesses": [],
+      "classification": "ordinary_proxy_unverified",
+      "known_interim_rows": [
+        {
+          "ts_code": "600578.SH",
+          "end_date": "20140630",
+          "ann_date": "20140821",
+          "div_proc": "股东大会通过",
+          "cash_div_tax": null,
+          "stk_div": 0.0,
+          "record_date": null,
+          "ex_date": null,
+          "pay_date": null,
+          "imp_ann_date": null
+        }
+      ],
+      "annual_scope": "reported_annual_total",
+      "annual_total_cash": "923464190.80",
+      "remaining_gaps": [
+        "Ordinary/special split unverified; missing special wording or ordinary-share wording does not prove special cash zero.",
+        "Interim NULL remains unchanged; full-year scope is supported by the then-public annual table, not by assigning NULL zero or assuming no later unannounced additions."
+      ],
+      "note": "登记股东大会已批准的该年度现金方案，并以当时公开年度现金表核对年度范围；金额、股数依据均来自批准公开日前已有资料。普通/特别未单独核实，总额作为普通仅能是代理；本登记不决定持续性或交易资格。新增年度范围原文：2014年年度报告物理第23页，20150402公开，FY2014现金表列923464190.80元；此来源早于股东大会公开日，不将预案阶段提前视为已批准。中期接口NULL继续保留；按该年度汇总口径核对，不补0、不推定普通/特别拆分，也不承诺未来永不追加。"
+    },
+    {
+      "symbol": "600642.SH",
+      "period": "20141231",
+      "source": "https://static.cninfo.com.cn/finalpage/2015-06-03/1201096124.PDF",
+      "source_sha256": "443c420888282a8990390dbdec6404e6c03646c4a33d5d5febb900dc3d3da259",
+      "available_on": "20150603",
+      "pages": "1、3、7",
+      "cash_dps": "0.20",
+      "total_cash": "910407663.20",
+      "share_count": "4552038316",
+      "share_basis": "visible_year_end_proxy",
+      "supporting_sources": [
+        {
+          "source": "https://static.cninfo.com.cn/finalpage/2015-04-29/1200933202.PDF",
+          "source_sha256": "b7541a89e794e1065e35880c35f9fc87c9bb48bf70874cb5302dec976c0c6be0",
+          "available_on": "20150429",
+          "pages": "1、2、4"
+        },
+        {
+          "source": "https://static.cninfo.com.cn/finalpage/2015-05-26/1201060994.PDF",
+          "source_sha256": "8c0efcf258ca2fc1971d4cf8fc0799f2fdea9e1507e184a8dc6401a94a05a69f",
+          "available_on": "20150526",
+          "pages": "32"
+        },
+        {
+          "source": "https://static.cninfo.com.cn/finalpage/2015-04-29/1200933205.PDF",
+          "source_sha256": "e7ce3f4be5985969d71a6de65102aed62f724abafafe3fa510d3ece579c90747",
+          "available_on": "20150429",
+          "pages": "23"
+        }
+      ],
+      "share_witnesses": [
+        {
+          "ts_code": "600642.SH",
+          "ann_date": "20150429",
+          "f_ann_date": "20150429",
+          "end_date": "20150331",
+          "report_type": "1",
+          "comp_type": "1",
+          "total_share": 4552038316.0,
+          "money_cap": 6927155831.41,
+          "st_borr": 4732315639.33,
+          "lt_borr": 2977534776.11,
+          "non_cur_liab_due_1y": 49494027.23,
+          "total_liab": 14468518576.53,
+          "total_assets": 44870539222.74
+        },
+        {
+          "ts_code": "600642.SH",
+          "ann_date": "20150429",
+          "f_ann_date": "20150429",
+          "end_date": "20141231",
+          "report_type": "1",
+          "comp_type": "1",
+          "total_share": 4552038316.0,
+          "money_cap": 6183324693.33,
+          "st_borr": 4224861271.76,
+          "lt_borr": 2510521276.13,
+          "non_cur_liab_due_1y": 37494027.23,
+          "total_liab": 12574913413.07,
+          "total_assets": 42479420389.41
+        }
+      ],
+      "classification": "ordinary_proxy_unverified",
+      "known_interim_rows": [
+        {
+          "ts_code": "600642.SH",
+          "end_date": "20140630",
+          "ann_date": "20140826",
+          "div_proc": "股东大会通过",
+          "cash_div_tax": null,
+          "stk_div": 0.0,
+          "record_date": null,
+          "ex_date": null,
+          "pay_date": null,
+          "imp_ann_date": null
+        }
+      ],
+      "annual_scope": "reported_annual_total",
+      "annual_total_cash": "910407663.20",
+      "remaining_gaps": [
+        "Ordinary/special split unverified; missing special wording or ordinary-share wording does not prove special cash zero.",
+        "Interim NULL remains unchanged; full-year scope is supported by the then-public annual table, not by assigning NULL zero or assuming no later unannounced additions.",
+        "The annual cash amount is independently reported; the distribution share count remains a visible year-end proxy, not a verified distribution-base source."
+      ],
+      "note": "登记股东大会已批准的该年度现金方案，并以当时公开年度现金表核对年度范围；金额、股数依据均来自批准公开日前已有资料。普通/特别未单独核实，总额作为普通仅能是代理；本登记不决定持续性或交易资格。原方案段落仅列455204万股及约91041万元；新年度表独立列示910407663.20元，年度金额获得直接佐证。4552038316股仍取当时年末/一季报，保留股数代理，不能将金额证据直接升格为实际分派股数证明。新增年度范围原文：2014年年度报告物理第23页，20150429公开，FY2014现金表列910407663.20元；此来源早于股东大会公开日，不将预案阶段提前视为已批准。中期接口NULL继续保留；按该年度汇总口径核对，不补0、不推定普通/特别拆分，也不承诺未来永不追加。"
+    },
+    {
+      "symbol": "600018.SH",
+      "period": "20161231",
+      "source": "https://static.cninfo.com.cn/finalpage/2017-05-20/1203544865.PDF",
+      "source_sha256": "e15ac266b69756fcea815abad2450b6553e5dd967ddbeb9eb18c0bc5c044a862",
+      "available_on": "20170520",
+      "pages": "1、2、5",
+      "cash_dps": "0.156",
+      "total_cash": "3615093245.40",
+      "share_count": "23173674650",
+      "share_basis": "source_exact_base",
+      "supporting_sources": [
+        {
+          "source": "https://static.cninfo.com.cn/finalpage/2017-03-29/1203216497.PDF",
+          "source_sha256": "bcc2f42a89ccd40ec9c156ed8341c09c4409e80eb5c9bfa0b46fa311078da50a",
+          "available_on": "20170329",
+          "pages": "1、5"
+        },
+        {
+          "source": "https://static.cninfo.com.cn/finalpage/2017-03-29/1203216502.PDF",
+          "source_sha256": "b4b5d3d8614afafd57bd55bc04379bd1f02c803e294c12950799109bb1558a8b",
+          "available_on": "20170329",
+          "pages": "29"
+        }
+      ],
+      "share_witnesses": [],
+      "classification": "ordinary_proxy_unverified",
+      "known_interim_rows": [
+        {
+          "ts_code": "600018.SH",
+          "end_date": "20160630",
+          "ann_date": "20160830",
+          "div_proc": "股东大会通过",
+          "cash_div_tax": null,
+          "stk_div": 0.0,
+          "record_date": null,
+          "ex_date": null,
+          "pay_date": null,
+          "imp_ann_date": null
+        }
+      ],
+      "annual_scope": "reported_annual_total",
+      "annual_total_cash": "3615093245.40",
+      "remaining_gaps": [
+        "Ordinary/special split unverified; missing special wording or ordinary-share wording does not prove special cash zero.",
+        "Interim NULL remains unchanged; full-year scope is supported by the then-public annual table, not by assigning NULL zero or assuming no later unannounced additions."
+      ],
+      "note": "登记股东大会已批准的该年度现金方案，并以当时公开年度现金表核对年度范围；金额、股数依据均来自批准公开日前已有资料。普通/特别未单独核实，总额作为普通仅能是代理；本登记不决定持续性或交易资格。总现金为原文已明确DPS乘精确方案股数所得，未用后来实施金额回填。新增年度范围原文：2016年年度报告物理第29页，20170329公开，FY2016现金表列3615093245.40元；此来源早于股东大会公开日，不将预案阶段提前视为已批准。中期接口NULL继续保留；按该年度汇总口径核对，不补0、不推定普通/特别拆分，也不承诺未来永不追加。"
+    },
+    {
+      "symbol": "600383.SH",
+      "period": "20161231",
+      "source": "https://static.cninfo.com.cn/finalpage/2017-04-22/1203360509.PDF",
+      "source_sha256": "321b6fe358d62667b7d25e17d5b2741e1a08cd416ed600ba9be5abfe35799811",
+      "available_on": "20170422",
+      "pages": "1、3、10",
+      "cash_dps": "0.70",
+      "total_cash": "3159542240.40",
+      "share_count": "4513631772",
+      "share_basis": "source_exact_base",
+      "supporting_sources": [
+        {
+          "source": "https://static.cninfo.com.cn/finalpage/2017-04-01/1203247433.PDF",
+          "source_sha256": "afdf38899cbf5acb26cf12a1209d2d504ec069996449d41ef7ef905a24511646",
+          "available_on": "20170401",
+          "pages": "1、2、6"
+        },
+        {
+          "source": "https://static.cninfo.com.cn/finalpage/2017-04-01/1203247437.PDF",
+          "source_sha256": "4560a229937100c9f05bd5271c2adbc9899475251ec0ec5b13700a3a1deb34d0",
+          "available_on": "20170401",
+          "pages": "34"
+        }
+      ],
+      "share_witnesses": [],
+      "classification": "ordinary_proxy_unverified",
+      "known_interim_rows": [
+        {
+          "ts_code": "600383.SH",
+          "end_date": "20160630",
+          "ann_date": "20160820",
+          "div_proc": "股东大会通过",
+          "cash_div_tax": null,
+          "stk_div": 0.0,
+          "record_date": null,
+          "ex_date": null,
+          "pay_date": null,
+          "imp_ann_date": null
+        }
+      ],
+      "annual_scope": "reported_annual_total",
+      "annual_total_cash": "3159542240.40",
+      "remaining_gaps": [
+        "Ordinary/special split unverified; missing special wording or ordinary-share wording does not prove special cash zero.",
+        "Interim NULL remains unchanged; full-year scope is supported by the then-public annual table, not by assigning NULL zero or assuming no later unannounced additions."
+      ],
+      "note": "登记股东大会已批准的该年度现金方案，并以当时公开年度现金表核对年度范围；金额、股数依据均来自批准公开日前已有资料。普通/特别未单独核实，总额作为普通仅能是代理；本登记不决定持续性或交易资格。总现金为原文已明确DPS乘精确方案股数所得，未用后来实施金额回填。新增年度范围原文：2016年年度报告物理第34页，20170401公开，FY2016现金表列3159542240.40元；此来源早于股东大会公开日，不将预案阶段提前视为已批准。中期接口NULL继续保留；按该年度汇总口径核对，不补0、不推定普通/特别拆分，也不承诺未来永不追加。"
+    },
+    {
+      "symbol": "600642.SH",
+      "period": "20161231",
+      "source": "https://static.cninfo.com.cn/finalpage/2017-05-24/1203560550.PDF",
+      "source_sha256": "14f885a9096d6a74344aa04005f6e2352c96f7b52f64f156feabe8c23b57178f",
+      "available_on": "20170524",
+      "pages": "1、3、10",
+      "cash_dps": "0.22",
+      "total_cash": "1001448429.52",
+      "share_count": "4552038316",
+      "share_basis": "source_cross_referenced_base",
+      "supporting_sources": [
+        {
+          "source": "https://static.cninfo.com.cn/finalpage/2017-04-29/1203423818.PDF",
+          "source_sha256": "9e12b1ae99a231342e0c633aa35efc378429e1a6e2547b896d396ebbf16d74b7",
+          "available_on": "20170429",
+          "pages": "1、2、5"
+        },
+        {
+          "source": "https://static.cninfo.com.cn/finalpage/2017-05-16/1203519446.PDF",
+          "source_sha256": "a1cd30c495bf245180323fce5762ddde8753cf0115dd3c6932ce694b541af5de",
+          "available_on": "20170516",
+          "pages": "44、55、56、57、59、60"
+        },
+        {
+          "source": "https://static.cninfo.com.cn/finalpage/2017-04-29/1203423825.PDF",
+          "source_sha256": "b3b638cfe95da82d64aa53e5c3c7a8d17cd63ced6d55799a3996a422694521e7",
+          "available_on": "20170429",
+          "pages": "23"
+        }
+      ],
+      "share_witnesses": [
+        {
+          "ts_code": "600642.SH",
+          "ann_date": "20170429",
+          "f_ann_date": "20170429",
+          "end_date": "20170331",
+          "report_type": "1",
+          "comp_type": "1",
+          "total_share": 4552038316.0,
+          "money_cap": 8094531939.84,
+          "st_borr": 4876642920.37,
+          "lt_borr": 6969223098.81,
+          "non_cur_liab_due_1y": 287800000.0,
+          "total_liab": 19750496723.19,
+          "total_assets": 53329725266.87
+        },
+        {
+          "ts_code": "600642.SH",
+          "ann_date": "20170429",
+          "f_ann_date": "20170429",
+          "end_date": "20161231",
+          "report_type": "1",
+          "comp_type": "1",
+          "total_share": 4552038316.0,
+          "money_cap": 7722111579.67,
+          "st_borr": 4282937907.63,
+          "lt_borr": 7136285200.63,
+          "non_cur_liab_due_1y": 287800000.0,
+          "total_liab": 20817003183.52,
+          "total_assets": 53675097382.51
+        }
+      ],
+      "classification": "ordinary_proxy_unverified",
+      "known_interim_rows": [
+        {
+          "ts_code": "600642.SH",
+          "end_date": "20160630",
+          "ann_date": "20160826",
+          "div_proc": "股东大会通过",
+          "cash_div_tax": null,
+          "stk_div": 0.0,
+          "record_date": null,
+          "ex_date": null,
+          "pay_date": null,
+          "imp_ann_date": null
+        }
+      ],
+      "annual_scope": "reported_annual_total",
+      "annual_total_cash": "1001448429.52",
+      "remaining_gaps": [
+        "Ordinary/special split unverified; missing special wording or ordinary-share wording does not prove special cash zero.",
+        "Interim NULL remains unchanged; full-year scope is supported by the then-public annual table, not by assigning NULL zero or assuming no later unannounced additions."
+      ],
+      "note": "登记股东大会已批准的该年度现金方案，并以当时公开年度现金表核对年度范围；金额、股数依据均来自批准公开日前已有资料。普通/特别未单独核实，总额作为普通仅能是代理；本登记不决定持续性或交易资格。2017-05-16材料第44页将方案连至2016年末股本，第59—60页未变章程列精确455203.8316万股，第55—57页修订不涉及资本/股数条款；当时可见财务原行一致。1001448429.52元为交叉原文股数乘DPS，不是方案段落直接印出的精确总额。新增年度范围原文：2016年年度报告物理第23页，20170429公开，FY2016现金表列100144.84万元；此来源早于股东大会公开日，不将预案阶段提前视为已批准。年度表100144.84万元显示精度为100元，换算显示数1001448400元与精确交叉股数4552038316×0.22=1001448429.52元相差29.52元，属该显示精度内；annual_total_cash沿用交叉基数精确计算，不能把舍入显示数当成原文精确元额替换。中期接口NULL继续保留；按该年度汇总口径核对，不补0、不推定普通/特别拆分，也不承诺未来永不追加。"
+    },
+    {
+      "symbol": "600741.SH",
+      "period": "20171231",
+      "source": "https://static.cninfo.com.cn/finalpage/2018-06-28/1205100156.PDF",
+      "source_sha256": "2aef3df0acfd3f15f195e279289f10378e4bb4ada676363503b6a254bccfce7c",
+      "available_on": "20180628",
+      "pages": "1、4、8",
+      "cash_dps": "1.05",
+      "total_cash": "3310360183.20",
+      "share_count": "3152723984",
+      "share_basis": "source_exact_base",
+      "supporting_sources": [
+        {
+          "source": "https://static.cninfo.com.cn/finalpage/2018-03-29/1204532490.PDF",
+          "source_sha256": "3b68fded68ef4ace4510aaa5d94c7fa03b8132193abb956ca957827eded2d6d1",
+          "available_on": "20180329",
+          "pages": "1、2、6"
+        },
+        {
+          "source": "https://static.cninfo.com.cn/finalpage/2018-03-29/1204529973.PDF",
+          "source_sha256": "98c69f1237faab3c19c6de30540d8073027d553ed3aa75853486b98ca7006dc1",
+          "available_on": "20180329",
+          "pages": "2、23"
+        },
+        {
+          "source": "https://static.cninfo.com.cn/finalpage/2018-05-10/1204926765.PDF",
+          "source_sha256": "b3312f33c67e25631a37104aaf5b84f46e5f180d7fb257c7237434c1709681f7",
+          "available_on": "20180510",
+          "pages": "2"
+        },
+        {
+          "source": "https://static.cninfo.com.cn/finalpage/2018-05-10/1204926763.PDF",
+          "source_sha256": "d26b8858037dc146d1eb04b785ccc1581f427ffda766d27be00d2cc8e56dde39",
+          "available_on": "20180510",
+          "pages": "1、6"
+        },
+        {
+          "source": "https://static.cninfo.com.cn/finalpage/2018-06-20/1205066285.PDF",
+          "source_sha256": "d616a36d90c3091584c3539a48a485b18a690fcc1a56fd62b4d28da3a1033695",
+          "available_on": "20180620",
+          "pages": "29"
+        }
+      ],
+      "share_witnesses": [],
+      "classification": "ordinary_proxy_unverified",
+      "known_interim_rows": [
+        {
+          "ts_code": "600741.SH",
+          "end_date": "20170630",
+          "ann_date": "20170825",
+          "div_proc": "股东大会通过",
+          "cash_div_tax": null,
+          "stk_div": 0.0,
+          "record_date": null,
+          "ex_date": null,
+          "pay_date": null,
+          "imp_ann_date": null
+        }
+      ],
+      "annual_scope": "reported_annual_total",
+      "annual_total_cash": "3310360183.20",
+      "remaining_gaps": [
+        "Ordinary/special split unverified; missing special wording or ordinary-share wording does not prove special cash zero.",
+        "Interim NULL itself remains unchanged; annual amount is supported by the then-public annual table, not by interpreting NULL as zero."
+      ],
+      "note": "仅登记股东大会已批准的该年度现金方案；金额、股数依据均来自批准公开日前已有资料。普通/特别未单独核实，总额作为普通仅能是代理；本登记不决定持续性或交易资格。原年度报告第23页明确FY2017年度拟现金3310360183.20元，与批准方案一致；在2017日历年实施的FY2016现金仍归FY2016。未将中期接口NULL重写为0，也不预先断言未来永不追加。会议材料说明使用以前留存利润506496662.53元，不等于特别分红分类。"
+    },
+    {
+      "symbol": "600846.SH",
+      "period": "20221231",
+      "source": "https://static.cninfo.com.cn/finalpage/2023-10-13/1218021976.PDF",
+      "source_sha256": "886b627fb5ae2630ea77a3a78c8b789ecc3ef08fab080c5a09142afb57ee5c1e",
+      "available_on": "20231013",
+      "pages": "1,3,9",
+      "cash_dps": "0.17",
+      "total_cash": "106209457.72",
+      "share_count": "624761516",
+      "share_basis": "source_cross_referenced_base",
+      "supporting_sources": [
+        {
+          "source": "https://static.cninfo.com.cn/finalpage/2023-09-29/1217984054.PDF",
+          "source_sha256": "d033f96a34672e170ce339e0278d3af253e5a4993f8b6b9147eabcece7bf68f6",
+          "available_on": "20230929",
+          "pages": "20"
+        },
+        {
+          "source": "https://static.cninfo.com.cn/finalpage/2023-04-12/1216379869.PDF",
+          "source_sha256": "c258b078e06b69cff5f6265bf12f316ec8a9825b2a04b2993d461441c6dcbc99",
+          "available_on": "20230412",
+          "pages": "2,38,39"
+        },
+        {
+          "source": "https://static.cninfo.com.cn/finalpage/2022-08-27/1214425296.PDF",
+          "source_sha256": "08803892d649b2ec60e1aecca85c8319402316c8ef2bd9b3b3db3fbeaa562404",
+          "available_on": "20220827",
+          "pages": "2"
+        },
+        {
+          "source": "https://static.cninfo.com.cn/finalpage/2023-06-29/1217157000.PDF",
+          "source_sha256": "411093581039d733205823ea6f75b7654c96a5f3f3b93eae0aa3959f2b09df0d",
+          "available_on": "20230629",
+          "pages": "1,3,9"
+        }
+      ],
+      "share_witnesses": [],
+      "classification": "ordinary_proxy_unverified",
+      "known_interim_rows": [
+        {
+          "ts_code": "600846.SH",
+          "end_date": "20220630",
+          "ann_date": "20220827",
+          "div_proc": "预案",
+          "cash_div_tax": 0.0,
+          "stk_div": 0.0,
+          "record_date": null,
+          "ex_date": null,
+          "pay_date": null,
+          "imp_ann_date": null
+        },
+        {
+          "ts_code": "600846.SH",
+          "end_date": "20220630",
+          "ann_date": "20220827",
+          "div_proc": "股东大会通过",
+          "cash_div_tax": null,
+          "stk_div": 0.0,
+          "record_date": null,
+          "ex_date": null,
+          "pay_date": null,
+          "imp_ann_date": null
+        }
+      ],
+      "annual_scope": "reported_annual_total",
+      "annual_total_cash": "106209457.72",
+      "remaining_gaps": [
+        "普通/特别未单列核实；普通金额仅沿既有方法作为代理，不能称特别为0或已证明可持续。",
+        "624761516股为再审材料列出的2022年末计算基数；方案维持总额并可因股数变化调整DPS，不冒称10月13日已知未来登记日实际股数。"
+      ],
+      "note": "2023-06-28 AGM否决，06-29公开；09-29公开会议材料重新提交同一全年方案，10-12 AGM通过、10-13公开。未使用10-21实施原文作为此前批准证据。供应商预案/通过/未通过共用20230412不是真实批准或否决日。"
     }
   ]
 }

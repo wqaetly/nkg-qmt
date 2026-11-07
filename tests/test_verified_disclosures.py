@@ -295,5 +295,34 @@ class VerifiedZeroCashYearTests(unittest.TestCase):
         self.assertTrue(any('全年零现金分红核实' in s for s in result['issues']))
 
 
+class RegisteredQuarterlyZeroTests(unittest.TestCase):
+    def test_early_consolidated_debt_sources_are_date_and_row_scoped(self):
+        cases = (
+            ('000726.SZ', '20160331', '20160427', '20160426', {'non_cur_liab_due_1y'},
+             'abd06b0482ca3538671ea86d41e70ec5d768ac52ba7ac16bcea4947d93703a15'),
+            ('000858.SZ', '20150331', '20150429', '20150428', {'st_borr', 'non_cur_liab_due_1y'},
+             '3953c85680df35528898afe0f6acc98e3698922a4edc330f97d12aec924c3381'),
+        )
+        for code, period, day, before, fields, digest in cases:
+            with self.subTest(symbol=code):
+                proofs = [p for p in DISCLOSURES['financial_zero_fields']
+                          if (p['expected']['ts_code'], p['expected']['end_date']) == (code, period)]
+                self.assertEqual({p['field'] for p in proofs}, fields)
+                self.assertEqual(len(proofs), len(fields))
+                self.assertTrue(all(p['available_on'] == day and p['source_sha256'] == digest for p in proofs))
+                raw = copy.deepcopy(proofs[0]['expected'])
+                original = copy.deepcopy(raw)
+                self.assertEqual(statements([raw], before), {})
+                corrected = statements([raw], day)[period]
+                self.assertTrue(all(raw[f] is None and corrected[f] == '0' for f in fields))
+                self.assertTrue(all(p['original'] == original for p in corrected['verified_zero_fields']))
+                self.assertEqual(raw, original)
+                self.assertEqual(corrected['lt_borr'], original['lt_borr'])
+                later = {**raw, 'ann_date': '20261106', 'f_ann_date': '20261106'}
+                self.assertTrue(all(statements([raw, later], '20261106')[period][f] is None for f in fields))
+                with self.assertRaises(AppError):
+                    statements([{**raw, 'money_cap': raw['money_cap'] + 1}], day)
+
+
 if __name__ == '__main__':
     unittest.main()

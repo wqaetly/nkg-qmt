@@ -38,7 +38,7 @@ class RankUiTests(unittest.TestCase):
             self.assertEqual(history['runs'][0]['label'],'本次历史 股息排序 · 主方案')
             self.assertEqual(history['runs'][0]['fills'],result['trades'])
             page=chart_panel(workspace,{'as_of':'20250804','source':'Tushare','rows':[]},{'focus_symbols':[]})
-            self.assertIn('<option value="rank">本次历史 股息排序 · 主方案</option>',page)
+            self.assertIn('<option value="rank">历史主方案</option>',page)
             for wrong in ('<option value="004">','<option value="005">','<option value="006">','本次历史 5%'):
                 self.assertNotIn(wrong,page)
             payload=json.loads(re.search(r'id="market-chart-data">(.*?)</script>',page,re.S)[1])

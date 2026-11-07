@@ -8,20 +8,42 @@ from statistics import median
 from .config import AppError, atomic_json, dec, date_key, now_cn
 from .ledger import Ledger, rebalance_quantity
 from .market import Tushare
-from .research import statements, signed, implemented_dividends, annual_dividend_cash, verified_zero_cash_years, disclosed_date
+from .research import statements, signed, implemented_dividends, annual_dividend_cash, annual_cash_decision, annual_cashflow_warning, verified_zero_cash_years, disclosed_date
 from .service import read_json, update_ledger
 from .selection import load_rules, automatic_path
 from vendor.dividend_stock_research.dividend_price import calculate
 
 
-def dividend_assessment(row, dossier, rules, *, earnings_basis='conservative_minimum'):
+def dividend_assessment(row, dossier, rules, *, earnings_basis='conservative_minimum', dividend_policy='implemented_only', cashflow_policy='latest_and_three_year', exit_policy='review_freeze'):
     if earnings_basis not in ('conservative_minimum','ttm'):
         raise AppError('未知实验盈利口径，未回退为默认规则。')
+    if dividend_policy not in ('implemented_only','approved_annual_cash'):
+        raise AppError('未知现金分红实验口径。')
+    if cashflow_policy not in ('latest_and_three_year','three_year_coverage'):
+        raise AppError('未知自由现金流实验口径。')
+    if exit_policy not in ('review_freeze','known_failure_exit'):
+        raise AppError('未知持仓退出实验规则。')
+    if exit_policy=='known_failure_exit' and (earnings_basis!='conservative_minimum'
+            or dividend_policy!='approved_annual_cash' or cashflow_policy!='three_year_coverage'):
+        raise AppError('已知筛选失败退出须使用保守盈利、已批准年度现金及三年累计现金覆盖口径。')
     result = {'symbol':row['symbol'],'name':row['name'],'industry':row['industry'],
               'state':'待数据核实','reason':'','scenarios':[], 'evidence_hash':row.get('evidence_hash','')}
+    decision=None
+    if dividend_policy=='approved_annual_cash':
+        result['dividend_policy']=dividend_policy
+    if cashflow_policy=='three_year_coverage':
+        result['cashflow_policy']=cashflow_policy
+    failures=[]
+    if exit_policy=='known_failure_exit':
+        result['exit_decision']={'policy':exit_policy,'failure_codes':failures,
+                                 'validation_complete':False,'blockers':[],'action':'existing_rules'}
     def stop(state, reason):
         result.update(state=state,reason=reason)
+        if exit_policy=='known_failure_exit' and state=='待数据核实':
+            result['exit_decision'].update(validation_complete=False,blockers=['financial_evidence_unresolved'],action='freeze')
         return result
+    if row.get('cashflow_policy','latest_and_three_year')!=cashflow_policy:
+        return stop('待数据核实','自由现金流摘要与评估口径不一致，须重新生成摘要')
     if row['status']=='排除':
         return stop('排除','风险警示、退市标记或最新归母利润非正')
     if row.get('financial_company'):
@@ -29,7 +51,29 @@ def dividend_assessment(row, dossier, rules, *, earnings_basis='conservative_min
     if not row['symbol'].startswith(('600','601','603','605','000','001','002','003')):
         return stop('不适用','本实验仅支持沪深主板普通股')
     recent=row.get('annual',[])[:1]
-    if recent and recent[0].get('simple_fcf') is not None and signed(recent[0]['simple_fcf'])<=0:
+    if cashflow_policy=='three_year_coverage':
+        try:
+            cashflows=statements(dossier['data']['cashflow'],row['as_of'])
+            for item in row.get('annual',[])[:5]:
+                raw=cashflows.get(item['period'],{})
+                operating,capex=raw.get('n_cashflow_act'),raw.get('c_pay_acq_const_fiolta')
+                free=None if operating is None or capex is None else signed(operating)-signed(capex)
+                for key,value in (('operating_cash',operating),('capex',capex),('simple_fcf',free)):
+                    saved=item.get(key)
+                    if (saved is None)!=(value is None) or (value is not None and signed(saved)!=signed(value)):
+                        return stop('待数据核实','自由现金流摘要与当时原始现金流量表不一致')
+            warning=annual_cashflow_warning(row.get('annual',[]))
+            if row.get('cashflow_warning')!=warning:
+                return stop('待数据核实','最新年度自由现金流警告与摘要不一致')
+            if warning:result['cashflow_warning']=warning
+            if recent and recent[0].get('simple_fcf') is not None:
+                result['latest_fcf']=str(signed(recent[0]['simple_fcf']))
+            first_three=row.get('annual',[])[:3]
+            if len(first_three)==3 and all(a.get('simple_fcf') is not None for a in first_three):
+                result['three_year_fcf']=str(sum(signed(a['simple_fcf']) for a in first_three))
+        except (AppError,KeyError,TypeError,ValueError,ArithmeticError):
+            return stop('待数据核实','当时可用现金流量表缺失或版本冲突；不补零')
+    if cashflow_policy=='latest_and_three_year' and recent and recent[0].get('simple_fcf') is not None and signed(recent[0]['simple_fcf'])<=0:
         return stop('排除','最近完整年度自由现金流非正')
     try:
         confirmed=verified_zero_cash_years(dossier['data'].get('dividend',[]),row['symbol'],row['as_of'])
@@ -53,6 +97,13 @@ def dividend_assessment(row, dossier, rules, *, earnings_basis='conservative_min
         missing_reason='、'.join(item['label'] for item in missing)+f'（{latest}）缺失，不能按零计算' if missing else ''
         if missing:
             result['financial_gaps']=missing
+        if dividend_policy=='approved_annual_cash':
+            periods=[p for p in statements(dossier['data']['income'],row['as_of']) if p.endswith('1231')]
+            decision=annual_cash_decision(dossier['data']['dividend'],row['symbol'],max(periods),row['as_of'],balance) if periods else None
+            if (row.get('dividend_policy')!=dividend_policy
+                    or json.dumps(row.get('cash_decision'),sort_keys=True)!=json.dumps(decision,sort_keys=True)):
+                return stop('待数据核实','年度现金决策摘要与当时原始记录、来源或实验口径不一致')
+            result['cash_decision']=decision
     except (AppError,KeyError,TypeError,ValueError):
         return stop('待数据核实','；'.join(row.get('issues',[])[:-1]) or '当时可用资产负债表缺失或版本冲突')
     if not row.get('gate'):
@@ -72,23 +123,45 @@ def dividend_assessment(row, dossier, rules, *, earnings_basis='conservative_min
         if any(a['audit'] != '标准无保留意见' for a in annual):
             return stop('待数据核实','近五年审计意见未全部取得标准无保留意见')
         estimates=annual_dividend_cash(implemented_dividends(data['dividend'],day),balance,f'{int(day[:4])-8}0101')
+        bridge=bool(decision and decision['stage']=='approved')
+        cash_periods=[f'{year-i}1231' for i in range(1,6)] if bridge else [a['period'] for a in annual]
+        if any(estimates.get(p,{}).get('implemented_dps') is None
+               or dec(estimates[p]['implemented_dps'])<=0 for p in cash_periods):
+            return stop('待数据核实','批准年度之前五年已实施正现金分红不齐' if bridge else '近五年已实施正现金分红数据不齐或非正，须重新研究')
         for item in annual:
             fresh=estimates.get(item['period'],{})
-            if fresh.get('implemented_dps') is None or dec(fresh['implemented_dps'])<=0:
-                return stop('待数据核实','近五年已实施正现金分红数据不齐或非正，须重新研究')
             for key in ('implemented_dps','ordinary_dps','estimated_dividend_cash','estimated_ordinary_cash'):
                 if key not in item:
                     continue  # Old summaries may omit derived fields; calculations still use fresh evidence.
                 expected=fresh.get(key)
                 if (item[key] is None)!=(expected is None) or (expected is not None and dec(item[key])!=dec(expected)):
                     return stop('待数据核实','分红摘要与当时可用原始事件或股数依据不一致，须重新研究')
-        dividends = [dec(estimates[a['period']]['estimated_dividend_cash'],positive=True) for a in annual[:3]]
-        payout = [dec(estimates[a['period']]['estimated_ordinary_cash'],positive=True)/dec(a['profit'],positive=True) for a in annual[:3]]
+        cash_estimates=estimates
+        if bridge:
+            cash_estimates={**estimates,annual[0]['period']:{'estimated_dividend_cash':decision['total_cash'],
+                                                          'estimated_ordinary_cash':decision['ordinary_cash']}}
+        dividends = [dec(cash_estimates[a['period']]['estimated_dividend_cash'],positive=True) for a in annual[:3]]
+        if cashflow_policy=='three_year_coverage':
+            result['three_year_dividend_cash']=str(sum(dividends))
+        payout = [dec(cash_estimates[a['period']]['estimated_ordinary_cash'],positive=True)/dec(a['profit'],positive=True) for a in annual[:3]]
+        rate=min(median(payout),payout[0],Decimal(1)) if dividend_policy=='approved_annual_cash' else min(median(payout),Decimal(1))
+        if dividend_policy=='approved_annual_cash':
+            result.update(payout_inputs=list(map(str,payout)),payout_uncapped_median=str(median(payout)),
+                          payout_latest_cap=str(payout[0]),cash_coverage_basis='commitment' if bridge else 'implemented_announcements')
+            if not decision:
+                result['cash_decision']={'period':annual[0]['period'],'stage':'implemented','cash_scope':'implemented_announcements',
+                    'total_cash':str(dividends[0]),'ordinary_cash':cash_estimates[annual[0]['period']]['estimated_ordinary_cash'],
+                    'classification':'ordinary_proxy_with_known_special_excluded',
+                    'components':cash_estimates[annual[0]['period']]['dividend_cash_basis']}
         if max(payout)>1:
             return stop('待数据核实','近三年估算派息超过对应归母利润；须核查特别分红、留存收益和持续政策，不能直接视为不合格公司')
         fcf = sum(signed(a['simple_fcf']) for a in annual[:3])
-        if fcf < sum(dividends) or signed(annual[0]['simple_fcf']) <= 0:
-            return stop('待数据核实','三年自由现金流合计不足覆盖估算派息，须核查存量现金、资本开支与分红资金来源')
+        if dividend_policy=='approved_annual_cash':
+            result['fcf_coverage']=str(fcf/sum(dividends))
+        if fcf < sum(dividends) or (cashflow_policy=='latest_and_three_year' and signed(annual[0]['simple_fcf']) <= 0):
+            if exit_policy=='review_freeze':
+                return stop('待数据核实','三年自由现金流合计不足覆盖估算派息，须核查存量现金、资本开支与分红资金来源')
+            failures.append('three_year_fcf_shortfall')
         latest = row['latest_period']
         if not latest.endswith('1231'):
             previous = str(int(latest[:4])-1)
@@ -99,21 +172,30 @@ def dividend_assessment(row, dossier, rules, *, earnings_basis='conservative_min
             profit_ttm, deducted_ttm = signed(inc[latest]['n_income_attr_p']), signed(indicators[latest]['profit_dedt'])
         earnings = (min(profit_ttm,deducted_ttm) if earnings_basis=='ttm'
                     else min(median(profits[:3]),profits[0],profit_ttm,deducted_ttm))
-        if earnings <= 0:
+        if earnings <= 0 and not failures:
             return stop('排除','滚动归母或扣非利润非正')
         b = balance[latest]
         if any(item['field'] in ('total_liab','total_assets') for item in missing):
             return stop('待数据核实',missing_reason)
         leverage = dec(b['total_liab'])/dec(b['total_assets'],positive=True)
-        if leverage > dec(rules['max_debt_ratio']):
+        if leverage > dec(rules['max_debt_ratio']) and not failures:
             return stop('排除','资产负债率超过实验上限')
         if missing:
             return stop('待数据核实',missing_reason)
         debt_due = dec(b['st_borr'])+dec(b['non_cur_liab_due_1y'])
         if debt_due > dec(b['money_cap'])+max(Decimal(0),signed(annual[0]['operating_cash'])):
-            return stop('待数据核实','短期到期债务超过货币资金加上年经营现金流；须核查定存、金融资产与借款安排，不能据此断言偿债不足')
+            if exit_policy=='review_freeze':
+                return stop('待数据核实','短期到期债务超过货币资金加上年经营现金流；须核查定存、金融资产与借款安排，不能据此断言偿债不足')
+            failures.append('short_debt_coverage_shortfall')
         shares = dec(row['share_count'],positive=True)
-        eps, rate = earnings/shares, min(median(payout),Decimal(1))
+        if exit_policy=='known_failure_exit':
+            dec(row['price'],positive=True)
+            result['exit_decision']['validation_complete']=True
+            if failures:
+                result['exit_decision'].update(action='exit',debt_due=str(debt_due),
+                    cash_plus_operating_cash=str(dec(b['money_cap'])+max(Decimal(0),signed(annual[0]['operating_cash']))))
+                return stop('排除','已知现金覆盖筛选条件未满足；资料校验完成，按既有月度规则退出，不代表公司无支付能力')
+        eps = earnings/shares
         for name, earnings_factor, payout_factor in [('悲观','0.8','0.9'),('基准','1','1'),('较好','1.1','1')]:
             result['scenarios'].append({'scenario':name,**calculate(str(eps*Decimal(earnings_factor)),str(rate*Decimal(payout_factor)),'1',rules['entry_yield'],row['price'])})
         base = result['scenarios'][1]
@@ -125,13 +207,14 @@ def dividend_assessment(row, dossier, rules, *, earnings_basis='conservative_min
         return stop('待数据核实','历史股数、TTM、短期债务或财务字段缺失/无效；不补零')
 
 
-def assess(row, dossier, rules, *, earnings_basis='conservative_minimum'):
-    result=dividend_assessment(row,dossier,rules,earnings_basis=earnings_basis)
+def assess(row, dossier, rules, *, earnings_basis='conservative_minimum', dividend_policy='implemented_only', cashflow_policy='latest_and_three_year', exit_policy='review_freeze'):
+    result=dividend_assessment(row,dossier,rules,earnings_basis=earnings_basis,dividend_policy=dividend_policy,cashflow_policy=cashflow_policy,exit_policy=exit_policy)
     financial_state=result['state']
     financial_reason=result['reason']
     selection=row.get('selection',{})
     valuation=dict(selection.get('valuation',{'state':'待核实','reason':'估值数据缺失'}))
     liquidity=selection.get('liquidity',{'state':'待核实','reason':'流动性数据缺失'})
+    selection_unknown=exit_policy=='known_failure_exit' and any(d.get('state') not in ('通过','未通过') for d in (valuation,liquidity))
     if result.get('estimated_eps'):
         normalized_pe=dec(row['price'],positive=True)/dec(result['estimated_eps'],positive=True)
         valuation['normalized_pe']=str(normalized_pe)
@@ -147,6 +230,17 @@ def assess(row, dossier, rules, *, earnings_basis='conservative_minimum'):
             result.update(state='等待筛选条件',reason=valuation['reason']+'；'+liquidity['reason'])
         elif not selection.get('coarse_pass'):
             result.update(state='等待筛选条件',reason='关注/既有计划保留研究资格，但未通过基础候选门槛；'+selection.get('reason','初筛数据缺失'))
+    if exit_policy=='known_failure_exit' and result['exit_decision']['failure_codes'] and selection_unknown:
+        result.update(state='待数据核实',reason=result['reason']+'；估值/流动性资料仍待核实，不能以已知筛选失败替代资料校验')
+        result['exit_decision'].update(validation_complete=False,action='freeze')
+        result['exit_decision']['blockers'].append('valuation_or_liquidity_unresolved')
+        result['scenarios']=[]
+        for key in ('estimated_yield','estimated_eps','reference_price'):
+            result.pop(key,None)
+    elif exit_policy=='known_failure_exit' and result['state']=='待数据核实':
+        result['exit_decision'].update(validation_complete=False,action='freeze')
+        if not result['exit_decision']['blockers']:
+            result['exit_decision']['blockers'].append('valuation_or_liquidity_unresolved')
     return result
 
 
@@ -170,9 +264,12 @@ def order_price(row, assessment, side, rules):
 
 def allocate(ledger, report, assessments, rules):
     """Monthly fixed share targets; unused slots remain cash, never force a trade."""
-    account = ledger.account('paper')
-    equity = dec(ledger.summary('paper')['marks'][-1]['equity'])
-    per_stock = min(dec(account['max_position']),equity*(1-dec(rules['cash_reserve']))/rules['max_holdings'])
+    marks = ledger.summary('paper')['marks']
+    if ledger.cfg.get('paper_capital_policy','fixed_amount')=='equity_ratio' and (not marks or marks[-1]['day']!=report['as_of']):
+        raise AppError('净值比例分配必须使用信号当日的账户估值。')
+    equity = dec(marks[-1]['equity'])
+    limits = ledger.position_limits('paper',equity)
+    per_stock = min(limits['max_position'],equity*(1-dec(rules['cash_reserve']))/rules['max_holdings'])
     by_code = {r['symbol']:r for r in report['rows']}
     targets, sectors, reasons = {},{},{}
     eligible = sorted((a for a in assessments if a['state']=='满足价格条件'),key=lambda a:(-dec(a['estimated_yield']),a['symbol']))
@@ -182,7 +279,7 @@ def allocate(ledger, report, assessments, rules):
             reasons[symbol]='已达到本月目标持股数量'
             continue
         price = order_price(by_code[symbol],a,'buy',rules)
-        budget = min(per_stock,dec(account['max_sector'])-sectors.get(industry,Decimal(0)))
+        budget = min(per_stock,limits['max_sector']-sectors.get(industry,Decimal(0)))
         quantity = max(0,int(budget/(price*100))*100)
         if not quantity:
             reasons[symbol]=f'单个目标预算 {budget:.2f} 元不足一手（限价估算 {price*100:.2f} 元）'

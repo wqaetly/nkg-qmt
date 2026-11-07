@@ -7,5 +7,6 @@
 #verified-zero-cash table,#financial-gaps table{min-width:760px}#verified-zero-cash td:last-child{min-width:320px}#financial-gaps td:nth-child(4){min-width:180px}
 #holding-freezes table{min-width:1040px}#holding-freezes td:last-child{min-width:340px}
 #suspension-valuations table{min-width:1120px}#suspension-valuations td:nth-child(4){min-width:150px}#suspension-valuations td:last-child{min-width:310px}
+#cashflow-policy table{min-width:1400px}#cashflow-policy th:not(:last-child),#cashflow-policy td:not(:last-child){white-space:nowrap}#cashflow-policy th:last-child,#cashflow-policy td:last-child{width:280px;min-width:280px;max-width:320px;white-space:normal}
 .research-table-hint{display:none}@media(max-width:800px){.research-table-hint{display:block;margin:0 0 8px}}
 .comparison-panel{border-top:1px solid #dce2d5;margin-top:20px;padding-top:5px}.comparison-legend{display:flex;flex-wrap:wrap;gap:8px 20px;margin:12px 0}.comparison-legend label{display:flex;align-items:center;gap:7px;flex:none;font-size:12px}.comparison-legend input{min-height:0;width:16px;height:16px;accent-color:#246548}.comparison-chart{overflow:auto;outline-offset:4px}.comparison-chart svg{display:block;width:100%;min-width:600px}.comparison-chart:focus-visible{outline:2px solid #648971}

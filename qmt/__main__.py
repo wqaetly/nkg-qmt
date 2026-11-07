@@ -22,7 +22,7 @@ def parser():
     daily.add_argument('--refresh',action='store_true',help='忽略当天缓存重新取数')
     sub.add_parser('report',help='根据已有数据重新生成本地报告')
     forecast = sub.add_parser('forecast-check',help='离线检验固定年末股息估计与后来派息代理，不运行交易或改变规则')
-    forecast.add_argument('--version',default='historical-dividend-v29-annual-all-rank',help='已有完整年度候选实验目录名')
+    forecast.add_argument('--version',default='historical-dividend-v33-annual-all-rank-approved-cash-three-year-fcf-equity-limits',help='已有完整年度候选实验目录名')
     lab=sub.add_parser('lab',help='冻结二十只研究名单并更新K线，不运行定时任务或新增订单')
     lab.add_argument('--enrich',action='store_true',help='使用已配置搜索和AI补充公开资料草稿')
     backtest=sub.add_parser('backtest',help='独立历史二十股研究池与含费用回放，不更改模拟账本')
@@ -33,6 +33,12 @@ def parser():
     backtest.add_argument('--hold-band',action='store_true',help='与 --annual-pool 同用：月末对已有健康持仓使用3%保留门槛，新买仍按原条件')
     backtest.add_argument('--yield-rank',action='store_true',help='与 --annual-pool --all-candidates 同用：财务估值流动性合格后按预计股息率排序，不使用预计5%入场门槛，不叠加 --hold-band')
     backtest.add_argument('--position-freeze',action='store_true',help='仅与完整年度候选股息排序同用：单股资料待核实只冻结该持仓，身份/行业未知仍暂停组合新增；独立回放，不修改日常模拟')
+    backtest.add_argument('--approved-annual-cash',action='store_true',help='仅与 --annual-pool --all-candidates --yield-rank 同用：已批准年度现金可用于前瞻估计，不能作为账户到账；独立实验，不修改日常规则')
+    backtest.add_argument('--three-year-cashflow',action='store_true',help='与 --approved-annual-cash 同用：三年累计自由现金流须覆盖三年总现金分红，单年非正保留警告，不单独否决；独立实验')
+    backtest.add_argument('--equity-limits',action='store_true',help='与 --three-year-cashflow 同用：单股与行业额度按初始金额占本金的比例随净值调整；现金及20只约束不变，独立实验')
+    backtest.add_argument('--pe-context',action='store_true',help='与 --equity-limits 及保守盈利同用：自身三年PE分位仅供观察，资料完整性与其他估值上限保留；独立实验')
+    backtest.add_argument('--known-failure-exit',action='store_true',help='与 --equity-limits 及保守盈利同用：月末已确认的三年现金覆盖或短债覆盖失败允许退出，数据未知与行业变更仍冻结；不能叠加 --pe-context')
+    backtest.add_argument('--after-sale-rebalance',action='store_true',help='仅与 --known-failure-exit 同用：下一交易日卖单真实成交后，收盘对原月末因持仓上限未创建的买单补一次，最早再下一交易日执行；不重试未成交买单')
     backtest.add_argument('--earnings-basis',choices=('conservative_minimum','ttm'),default='conservative_minimum',
                           help='独立盈利口径对照：ttm仅取滚动归母/扣非较低值；默认同时受历史利润约束，不修改日常规则')
     research = sub.add_parser('research',help='搜索公开资料并由已配置的 AI 生成研究草稿')
@@ -157,6 +163,33 @@ def run(args):
                 experiment={**experiment,'version':experiment['version']+'-position-freeze','freeze_policy':'position'}
             if args.earnings_basis=='ttm':
                 experiment={**experiment,'version':experiment['version']+'-ttm','earnings_basis':'ttm'}
+            if args.approved_annual_cash:
+                if not args.annual_pool or not args.all_candidates or not args.yield_rank or args.hold_band:
+                    raise AppError('--approved-annual-cash 须与 --annual-pool --all-candidates --yield-rank 同用，不能叠加 --hold-band。')
+                experiment={**experiment,'version':experiment['version']+'-approved-cash','dividend_policy':'approved_annual_cash'}
+            if args.three_year_cashflow:
+                if not args.approved_annual_cash:
+                    raise AppError('--three-year-cashflow 须与 --approved-annual-cash 同用，不修改日常规则。')
+                experiment={**experiment,'version':experiment['version']+'-three-year-fcf','cashflow_policy':'three_year_coverage'}
+            if args.equity_limits:
+                if not args.three_year_cashflow:
+                    raise AppError('--equity-limits 须与 --three-year-cashflow 同用，不修改旧账本。')
+                experiment={**experiment,'version':experiment['version']+'-equity-limits','capital_policy':'equity_ratio'}
+            if args.pe_context:
+                if not args.equity_limits or args.earnings_basis!='conservative_minimum':
+                    raise AppError('--pe-context 须与 --equity-limits 及保守盈利同用，不修改日常估值规则。')
+                experiment={**experiment,'version':experiment['version'].replace('historical-dividend-v33','historical-dividend-v35',1)+'-pe-context',
+                            'valuation_policy':'historical_context'}
+            if args.known_failure_exit:
+                if not args.equity_limits or args.earnings_basis!='conservative_minimum' or args.pe_context:
+                    raise AppError('--known-failure-exit 须与 --equity-limits 及保守盈利同用，不能叠加 --pe-context。')
+                experiment={**experiment,'version':experiment['version'].replace('historical-dividend-v33','historical-dividend-v36',1)+'-known-failure-exit',
+                            'exit_policy':'known_failure_exit'}
+            if args.after_sale_rebalance:
+                if not args.known_failure_exit:
+                    raise AppError('--after-sale-rebalance 须与 --known-failure-exit 同用，不修改筛选或日常模拟。')
+                experiment={**experiment,'version':experiment['version'].replace('historical-dividend-v36','historical-dividend-v38',1)+'-after-sale-rebalance',
+                            'rebalance_policy':'after_confirmed_sale'}
             run_experiment(workspace,report['as_of'],cfg,experiment=experiment)
         elif args.command=='lab':
             from .lab import run_lab

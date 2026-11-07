@@ -5,6 +5,28 @@ from qmt.report import forecast_diagnostic_panel
 
 
 class ForecastUiTests(unittest.TestCase):
+    def test_origin_label_uses_engine_and_both_policies_not_version_name(self):
+        engine='a'*64
+        current={'source_engine_sha256':engine,'protocol':{'version':'main-v32',
+            'dividend_policy':'approved_annual_cash','cashflow_policy':'three_year_coverage'}}
+        data={**self.data(),'version':'dividend-forecast-v1-approved-cash','source_version':'different-window-v32',
+              'source_engine_sha256':engine,'dividend_policy':'approved_annual_cash','cashflow_policy':'three_year_coverage'}
+        page=forecast_diagnostic_panel(data,current)
+        self.assertIn('<summary>独立预测诊断</summary>',page)
+        self.assertIn('来源 different-window-v32',page)
+        self.assertIn('<table>',page)
+        for changes in ({'source_engine_sha256':'b'*64},{'source_engine_sha256':None},
+                        {'dividend_policy':'implemented_only'},{'cashflow_policy':'latest_and_three_year'}):
+            with self.subTest(changes=changes):
+                other=forecast_diagnostic_panel({**data,**changes},current)
+                self.assertIn('<summary>其他版本的预测诊断</summary>',other)
+                self.assertIn('来源 different-window-v32',other)
+                self.assertIn('<table>',other)
+        self.assertIn('其他版本的预测诊断',forecast_diagnostic_panel(data,{'protocol':current['protocol']}))
+        legacy={**self.data(),'source_engine_sha256':engine}
+        self.assertIn('<summary>独立预测诊断</summary>',forecast_diagnostic_panel(legacy,{'source_engine_sha256':engine,'protocol':{}}))
+        self.assertIn('其他版本的预测诊断',forecast_diagnostic_panel(self.data(),{'source_engine_sha256':engine,'protocol':{}}))
+
     def data(self):
         return {
             'version':'dividend-forecast-v1','status':'diagnostic',

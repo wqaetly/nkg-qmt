@@ -176,7 +176,7 @@ class Node {
   focus(){}
 }
 const windowHandlers={};
-const nodes=Object.fromEntries(['market-chart-data','chart-symbol','chart-source','chart-trade','chart-range','chart-context','chart-reference-legend','stock-chart','chart-tip','chart-explanation','chart-panel'].map(id=>[id,new Node(['chart-symbol','chart-source','chart-trade','chart-range'].includes(id)?'select':id)]));
+const nodes=Object.fromEntries(['market-chart-data','chart-symbol','chart-source','chart-trade','chart-range','chart-context','chart-provenance','chart-reference-legend','stock-chart','chart-tip','chart-explanation','chart-panel'].map(id=>[id,new Node(['chart-symbol','chart-source','chart-trade','chart-range'].includes(id)?'select':id)]));
 const option=(select,value)=>{const node=new Node('option');node.value=value;node.textContent=value;select.appendChild(node);};
 option(nodes['chart-source'],'daily');option(nodes['chart-source'],'004');option(nodes['chart-source'],'005');option(nodes['chart-range'],'60');option(nodes['chart-symbol'],'600000.SH');
 const candles=Array.from({length:160},(_,index)=>{const date=new Date(Date.UTC(2025,0,1+index));return {day:date.toISOString().slice(0,10).replaceAll('-',''),open:8,high:9,low:7,close:8.2,vol:100};});
@@ -197,6 +197,12 @@ nodes['chart-trade'].value='stock:0';nodes['chart-trade'].handlers.change();
 assert.match(nodes['chart-tip'].textContent,/送转新增 30 股.*上市日 —/);
 assert(!elements().some(node=>node.attrs['data-kind']==='fill'),'A stock distribution is not a buy fill');
 nodes['chart-source'].value='004';nodes['chart-source'].handlers.change();
+assert(!nodes['chart-context'].textContent.includes('historical-v9'));
+assert(nodes['chart-provenance'].textContent.includes('historical-v9'));
+const orderDetails=nodes['chart-explanation'].children.find(node=>node.className==='chart-orders');
+assert(orderDetails&&orderDetails.tag==='details'&&!orderDetails.open);
+assert.match(orderDetails.children[0].textContent,/最近 1 \/ 1 笔/);
+assert.match(orderDetails.children[1].textContent,/#1 买入 500 股/);
 const dividendFlow=nodes['chart-explanation'].children.find(node=>node.className==='dividend-notes');
 assert.equal(dividendFlow.open,undefined);assert.equal(dividendFlow.attrs.open,undefined);
 assert.match(dividendFlow.children[1].textContent,/公司派息说明，不代表本账户实际收到/);
@@ -207,6 +213,7 @@ assert(!elements().some(node=>node.attrs['data-kind']==='reference'));
 assert(!elements().some(node=>node.attrs['data-kind']==='fill'),'Old trade should be outside latest 60 bars');
 nodes['chart-trade'].value='0';nodes['chart-trade'].handlers.change();
 assert.match(nodes['chart-tip'].textContent,/模拟买 500 股 @ 8.18/);
+assert.match(nodes['chart-tip'].textContent,/费用 5/);
 assert(elements().some(node=>node.attrs['data-kind']==='signal'&&node.attrs['data-day']===plan.signal_date));
 assert(elements().some(node=>node.attrs['data-kind']==='fill'&&node.attrs['data-day']===fill.trade_date));
 nodes['stock-chart'].clientWidth=320;
@@ -220,7 +227,7 @@ const stockMarker=elements().find(node=>node.attrs['data-kind']==='stock-event')
 assert.equal(stockMarker.attrs['data-day'],stockEvent.ex_date);assert.equal(stockMarker.attrs['data-quantity'],'150');
 assert.match(stockMarker.children[0].textContent,/登记日 2025-01-21 持股 500 股，每登记股新增 0.3 股；上市日 2025-01-23/);
 assert.match(nodes['chart-tip'].textContent,/收 8.20.*送转新增 150 股/,'Stock distributions must not adjust raw candle prices');
-const flow=nodes['chart-explanation'].children.find(node=>node.tag==='details');
+const flow=nodes['chart-explanation'].children.find(node=>node.className==='stock-events');
 assert.equal(flow.attrs.open,undefined);assert.equal(flow.open,undefined);
 assert.equal(flow.children[2].children[0].children[0].href,stockEvent.source);
 nodes['stock-chart'].onkeydown({key:'ArrowLeft',preventDefault(){}});

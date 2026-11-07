@@ -21,6 +21,8 @@ def rebalance_quantity(actual, target):
 
 class Ledger:
     def __init__(self, path, cfg):
+        if cfg.get('paper_capital_policy','fixed_amount') not in ('fixed_amount','equity_ratio'):
+            raise AppError('模拟资金限额规则必须为 fixed_amount 或 equity_ratio。')
         self.cfg = cfg
         self.db = sqlite3.connect(str(path), timeout=15)
         self.db.row_factory = sqlite3.Row
@@ -68,6 +70,14 @@ class Ledger:
         if not row:
             raise AppError("账本尚未初始化；手动账本需明确策略资金及单股、行业上限。")
         return dict(row)
+
+    def position_limits(self, mode, equity):
+        account = self.account(mode)
+        limits = {key:dec(account[key]) for key in ('max_position','max_sector')}
+        if mode=='paper' and self.cfg.get('paper_capital_policy','fixed_amount')=='equity_ratio':
+            ratio = dec(equity)/dec(account['initial_cash'],positive=True)
+            limits = {key:value*ratio for key,value in limits.items()}
+        return limits
 
     def initialize(self, mode, cash, max_position, max_sector, start_date=None):
         start_date=date_key(start_date or now_cn().strftime('%Y%m%d'))
@@ -168,12 +178,12 @@ class Ledger:
                 continue
             quote=prices.get(symbol)
             if not quote or quote.get('trade_date')!=day:
-                raise AppError(f"{symbol} 缺少当日估值，未用旧价伪造净值。")
+                raise AppError(f"{symbol} 在 {day} 缺少当日估值，未用旧价伪造净值。")
             values[symbol]=dec(quote['close'],positive=True)*qty
         return values
 
     def create_plan(self, mode, row, day, next_day, quantity, limit_price, side, note, all_prices, industries, *, valuation_only=None):
-        account = self.account(mode)
+        self.account(mode)
         symbol = symbol_key(row['symbol'])
         date_key(day)
         date_key(next_day)
@@ -199,6 +209,16 @@ class Ledger:
                 raise AppError('创建交易计划仍须该股票当日真实行情，不能使用停牌估值。')
         with self.db:
             self.db.execute('BEGIN IMMEDIATE')
+            if mode=='paper' and self.cfg.get('paper_capital_policy','fixed_amount')=='equity_ratio':
+                future = self.db.execute("""SELECT 1 FROM (
+                    SELECT mode,trade_date AS day FROM fills
+                    UNION ALL SELECT mode,day FROM cash_events
+                    UNION ALL SELECT mode,holding_date FROM openings
+                    UNION ALL SELECT mode,ex_date FROM stock_events
+                    UNION ALL SELECT mode,signal_date FROM plans
+                    ) WHERE mode=? AND day>? LIMIT 1""",(mode,day)).fetchone()
+                if day<self.account(mode)['start_date'] or future:
+                    raise AppError('净值比例模拟不能在账户起点前或已有晚于信号日的账务时补建计划。')
             plans = self.open_plans(mode)
             if any(p['symbol']==symbol for p in plans):
                 raise AppError("该股票还有未核对计划，先处理实际成交或撤单。")
@@ -216,6 +236,10 @@ class Ledger:
                 if valuation_only is None and any(not all_prices.get(code) or all_prices[code].get('trade_date')!=day for code in held):
                     raise AppError("已有持仓缺少当日估值/行业，暂停新增。")
                 values=self._held_values(mode,day,all_prices,held,valuation_only)
+                cash = self.cash(mode)
+                receivable = sum((dec(r[0]) for r in self.db.execute("SELECT amount FROM entitlements WHERE mode=? AND ex_date<=? AND pay_date>?",(mode,day,day))),Decimal(0))
+                # Pending buys reserve capacity below, but are not assets in NAV.
+                limits = self.position_limits(mode,money(cash+sum(values.values(),Decimal(0))+receivable))
                 reserve = Decimal(0)
                 for plan in plans:
                     if plan['side']=='buy':
@@ -224,12 +248,12 @@ class Ledger:
                         values[plan['symbol']] = values.get(plan['symbol'],Decimal(0))+amount
                         reserve += amount+self.estimated_fee(plan['limit_price'],remaining,'buy')
                 amount = price*quantity
-                if amount+self.estimated_fee(price,quantity,side)+reserve>self.cash(mode):
+                if amount+self.estimated_fee(price,quantity,side)+reserve>cash:
                     raise AppError("现金扣除未完成买单预留后不足。")
-                if values.get(symbol,Decimal(0))+amount>dec(account['max_position']):
+                if values.get(symbol,Decimal(0))+amount>limits['max_position']:
                     raise AppError("超过单股金额上限。")
                 sector = sum(value for code,value in values.items() if industries.get(code)==row['industry'])
-                if sector+amount>dec(account['max_sector']):
+                if sector+amount>limits['max_sector']:
                     raise AppError("超过行业金额上限。")
             try:
                 cursor = self.db.execute("INSERT INTO plans(mode,symbol,industry,signal_date,execute_date,side,quantity,limit_price,note,review_hash) VALUES(?,?,?,?,?,?,?,?,?,?)",

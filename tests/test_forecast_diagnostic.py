@@ -23,6 +23,115 @@ def event(period='20231231', **changes):
 
 
 class ForecastDiagnosticTests(unittest.TestCase):
+    def test_frozen_policy_controls_both_methods_but_last_annual_ignores_pending_annual_cash(self):
+        stock={'symbol':'600001.SH','name':'测试','selection_quote':{},'selection_quality':{'evidence_hash':'same'}}
+        forward={'evidence_hash':'same','share_count':'1000','price':'8','annual':[{'period':'20251231','estimated_ordinary_cash':'999999'}]}
+        implemented={'annual':[{'period':'20251231','implemented_dps':'.1','estimated_ordinary_cash':'100'},
+                               {'period':'20241231','implemented_dps':'.6','estimated_ordinary_cash':'600'}]}
+        for stage,year,dps in (('approved',2024,'.6'),('implemented',2025,'.1')):
+            with self.subTest(stage=stage),patch('qmt.forecast_diagnostic.summarize',side_effect=[forward,implemented]) as summary, \
+                 patch('qmt.forecast_diagnostic.dividend_assessment',return_value={'state':'等待价格','estimated_eps':'2',
+                       'payout':'.1','cash_decision':{'stage':stage}}) as assess:
+                result=forecast(stock,{},'20261231',{},dividend_policy='approved_annual_cash')
+            self.assertEqual(result['known_fiscal_year'],2025)
+            self.assertEqual(result['last_annual_fiscal_year'],year)
+            self.assertEqual(Decimal(result['estimates_dps']['last_annual']),Decimal(dps))
+            self.assertEqual(result['dividend_policy'],'approved_annual_cash')
+            self.assertEqual(summary.call_args_list[0].kwargs,{'dividend_policy':'approved_annual_cash','cashflow_policy':'latest_and_three_year'})
+            self.assertEqual(summary.call_args_list[1].kwargs,{})
+            self.assertEqual([call.kwargs for call in assess.call_args_list],
+                [{'earnings_basis':basis,'dividend_policy':'approved_annual_cash','cashflow_policy':'latest_and_three_year'} for basis in ('conservative_minimum','ttm')])
+        with patch('qmt.forecast_diagnostic.summarize',side_effect=[forward,{'annual':[]}]), \
+             patch('qmt.forecast_diagnostic.dividend_assessment',return_value={'state':'等待价格','estimated_eps':'2','payout':'.1'}), \
+             self.assertRaisesRegex(AppError,'缺少已实施年度现金基线'):
+            forecast(stock,{},'20261231',{},dividend_policy='approved_annual_cash')
+
+    def test_diagnostic_threads_frozen_policy_without_changing_observed_cash_label(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace=Path(tmp);version='historical-dividend-v31-annual-all-rank-approved-cash'
+            base=workspace/'backtests'/version;base.mkdir(parents=True)
+            write=lambda path,value:path.write_text(json.dumps(value),encoding='utf8')
+            saved={'version':version,'pool_refresh':'year_end','cohort_limit':None,
+                'earnings_basis':'conservative_minimum','dividend_policy':'approved_annual_cash',
+                'account_config':{'paper_cash':'123456.78','paper_max_position':'5432.10','paper_max_sector':'23456.78'},
+                'rules':{'max_holdings':20,'cash_reserve':'.10'},'engine_sha256':'current','replay_end':'20261106'}
+            write(base/'protocol.json',saved)
+            dates=('20221230','20231229','20241231','20251231');symbol='600001.SH'
+            write(base/'cohort.json',{'rebalances':[{'day':day,'symbols':[symbol]} for day in dates]})
+            for day in dates:
+                child=base/'cohorts'/day;child.mkdir(parents=True)
+                write(child/'cohort.json',{'selected_on':day,'stocks':[{'symbol':symbol}]})
+                write(child/'financials.json',{symbol:{}})
+            write(base/'financials.json',{symbol:{'data':{'dividend':[]}}})
+            def predicted(stock,dossier,origin,rules,**kwargs):
+                self.assertEqual(rules,saved['rules'])
+                self.assertEqual(kwargs,{'dividend_policy':'approved_annual_cash','cashflow_policy':saved.get('cashflow_policy','latest_and_three_year')})
+                return {'symbol':symbol,'origin':origin,'target_year':int(origin[:4])+1,'price':'10',
+                        'estimates_dps':{method:'.6' for method in METHODS}}
+            with patch('qmt.forecast_diagnostic.protocol',return_value={'engine_sha256':'current'}) as frozen, \
+                 patch('qmt.forecast_diagnostic.forecast',side_effect=predicted) as calls:
+                result=run_diagnostic(workspace,version)
+            frozen.assert_called_once_with(saved['account_config'],saved)
+            self.assertEqual(calls.call_count,4)
+            self.assertEqual(result['dividend_policy'],'approved_annual_cash')
+            self.assertEqual(result['version'],'dividend-forecast-v1-approved-cash')
+            self.assertEqual(result['methods']['last_annual'],'最近已实施年度延续')
+            self.assertEqual(result['source_engine_sha256'],'current')
+            self.assertEqual(result['cashflow_policy'],'latest_and_three_year')
+            self.assertEqual(result['capital_policy'],'fixed_amount')
+            self.assertEqual(result['valuation_policy'],'historical_gate')
+            self.assertEqual(result['coverage']['proxy_scored'],0)
+            self.assertTrue(all(row['label']['observed_cash_dps'] is None for row in result['rows']))
+            self.assertFalse((workspace/'ledger.sqlite3').exists())
+            saved['cashflow_policy']='three_year_coverage'
+            outputs=[]
+            for policy in ('fixed_amount','equity_ratio'):
+                saved['capital_policy']=policy;write(base/'protocol.json',saved)
+                with patch('qmt.forecast_diagnostic.protocol',return_value={'engine_sha256':'current'}) as frozen, \
+                     patch('qmt.forecast_diagnostic.forecast',side_effect=predicted) as calls:
+                    outputs.append(run_diagnostic(workspace,version))
+                frozen.assert_called_once_with(saved['account_config'],saved)
+                self.assertEqual(calls.call_count,4)
+                self.assertEqual(outputs[-1]['capital_policy'],policy)
+                self.assertEqual(outputs[-1]['cashflow_policy'],'three_year_coverage')
+            self.assertEqual(outputs[0]['rows'],outputs[1]['rows'])
+            self.assertEqual(outputs[0]['forecast_sha256'],outputs[1]['forecast_sha256'])
+            path=workspace/'forecast-diagnostic.json';before=path.read_bytes()
+            saved['capital_policy']='unknown';write(base/'protocol.json',saved)
+            with patch('qmt.forecast_diagnostic.protocol') as frozen, \
+                 patch('qmt.forecast_diagnostic.forecast') as calls, \
+                 self.assertRaisesRegex(AppError,'仓位额度规则无法识别'):
+                run_diagnostic(workspace,version)
+            frozen.assert_not_called();calls.assert_not_called()
+            self.assertEqual(path.read_bytes(),before)
+            self.assertFalse((workspace/'ledger.sqlite3').exists())
+            saved.update(capital_policy='equity_ratio',entry_mode='yield_rank',quality_first=True,
+                         pool_size=None,entry_yields=['0.05'],primary_entry_yield='0.05')
+            outputs=[]
+            for policy in ('historical_gate','historical_context'):
+                saved['valuation_policy']=policy;write(base/'protocol.json',saved)
+                with patch('qmt.forecast_diagnostic.protocol',return_value={'engine_sha256':'current'}) as frozen, \
+                     patch('qmt.forecast_diagnostic.forecast',side_effect=predicted):
+                    outputs.append(run_diagnostic(workspace,version))
+                frozen.assert_called_once_with(saved['account_config'],saved)
+                self.assertEqual(outputs[-1]['valuation_policy'],policy)
+            self.assertEqual(outputs[0]['rows'],outputs[1]['rows'])
+            self.assertEqual(outputs[0]['forecast_sha256'],outputs[1]['forecast_sha256'])
+            before=path.read_bytes()
+            for changes in ({'valuation_policy':'unknown'},{'valuation_policy':None},
+                            {'capital_policy':'fixed_amount'},{'entry_mode':'yield_threshold'},
+                            {'pool_refresh':'static'},{'cohort_limit':20},
+                            {'cashflow_policy':'latest_and_three_year'},{'dividend_policy':'implemented_only'},
+                            {'quality_first':False},{'retention_yield':'.03'},
+                            {'entry_yields':['0.04']},{'earnings_basis':'ttm'}):
+                with self.subTest(changes=changes):
+                    write(base/'protocol.json',{**saved,**changes})
+                    with patch('qmt.forecast_diagnostic.protocol') as frozen, \
+                         patch('qmt.forecast_diagnostic.forecast') as calls, self.assertRaises(AppError):
+                        run_diagnostic(workspace,version)
+                    frozen.assert_not_called();calls.assert_not_called()
+                    self.assertEqual(path.read_bytes(),before)
+
     def test_predictions_exclude_future_disclosures_and_retain_known_year(self):
         row, dossier = fixture(day='20261231')
         stock = {'symbol': row['symbol'], 'name': row['name'], 'industry': row['industry'],
@@ -149,7 +258,7 @@ class ForecastDiagnosticTests(unittest.TestCase):
             with patch('qmt.forecast_diagnostic.run_diagnostic', return_value={'coverage': {'predictions': 0}}) as run:
                 with redirect_stdout(io.StringIO()):
                     self.assertEqual(main(['--workspace', temp, 'forecast-check']), 0)
-                run.assert_called_once_with(Path(temp).resolve(), 'historical-dividend-v29-annual-all-rank')
+            run.assert_called_once_with(Path(temp).resolve(), 'historical-dividend-v33-annual-all-rank-approved-cash-three-year-fcf-equity-limits')
             self.assertFalse((Path(temp) / 'ledger.sqlite3').exists())
 
 

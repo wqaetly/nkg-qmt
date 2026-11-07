@@ -16,33 +16,41 @@ from .service import read_json
 from .industry import industry_at, load_industry_history
 
 
-EXPERIMENT = {'version':'historical-dividend-v29','selection_day':'20221230','development_end':'20241231',
+EXPERIMENT = {'version':'historical-dividend-v33','selection_day':'20221230','development_end':'20241231',
               'validation_start':'20250101','pool_size':20,'entry_yields':['0.04','0.05','0.06'],
               'primary_entry_yield':'0.05','target_cagr':'0.10','benchmark':'515180.SH','earnings_basis':'conservative_minimum',
-              'freeze_policy':'portfolio','suspension_valuation':'verified_full_day_prior_close'}
-LONG_EXPERIMENT = {**EXPERIMENT,'version':'historical-dividend-v29-long','selection_day':'20141231',
+              'freeze_policy':'portfolio','suspension_valuation':'verified_full_day_prior_close','dividend_policy':'implemented_only',
+              'cashflow_policy':'latest_and_three_year','capital_policy':'fixed_amount'}
+LONG_EXPERIMENT = {**EXPERIMENT,'version':'historical-dividend-v33-long','selection_day':'20141231',
                    'development_end':'20191231','validation_start':'20200101','benchmark':'510880.SH'}
-QUALITY_EXPERIMENT = {**EXPERIMENT,'version':'historical-dividend-v29-quality','quality_first':True}
-QUALITY_LONG_EXPERIMENT = {**LONG_EXPERIMENT,'version':'historical-dividend-v29-quality-long','quality_first':True}
-ANNUAL_EXPERIMENT = {**QUALITY_EXPERIMENT,'version':'historical-dividend-v29-annual','pool_refresh':'year_end',
+QUALITY_EXPERIMENT = {**EXPERIMENT,'version':'historical-dividend-v33-quality','quality_first':True}
+QUALITY_LONG_EXPERIMENT = {**LONG_EXPERIMENT,'version':'historical-dividend-v33-quality-long','quality_first':True}
+ANNUAL_EXPERIMENT = {**QUALITY_EXPERIMENT,'version':'historical-dividend-v33-annual','pool_refresh':'year_end',
     'pool_exit':'退出名单的资料待核实持仓继续冻结跟踪；其他退出名单股票按下一交易日限价退出。行业沿用首次归属，变更冻结。',
     'monthly_targets':'沿用原回放月末重配：除冻结持仓外，仅当月仍满足全部买入条件者保留目标；不宣称只在3%股息率以下退出。'}
-ANNUAL_LONG_EXPERIMENT = {**ANNUAL_EXPERIMENT,'version':'historical-dividend-v29-annual-long',
+ANNUAL_LONG_EXPERIMENT = {**ANNUAL_EXPERIMENT,'version':'historical-dividend-v33-annual-long',
     'selection_day':LONG_EXPERIMENT['selection_day'],'development_end':LONG_EXPERIMENT['development_end'],
     'validation_start':LONG_EXPERIMENT['validation_start'],'benchmark':LONG_EXPERIMENT['benchmark']}
 
 
-HOLD_EXPERIMENT = {**ANNUAL_EXPERIMENT,'version':'historical-dividend-v29-annual-hold','retention_yield':'0.03',
+HOLD_EXPERIMENT = {**ANNUAL_EXPERIMENT,'version':'historical-dividend-v33-annual-hold','retention_yield':'0.03',
     'monthly_targets':'月末检查：当期成员财务已核实、流动性通过且当日情景股息率至少3%可保留；估值及历史股息入场条件不单独触发卖出。仅持有资格不允许加仓；仍满足完整入场条件者沿用原重配。保留股先占额度，按原月度单股预算与行业额度整手修剪，资料待核实仍冻结；不是每日风险退出。'}
-HOLD_LONG_EXPERIMENT = {**ANNUAL_LONG_EXPERIMENT,'version':'historical-dividend-v29-annual-long-hold',
+HOLD_LONG_EXPERIMENT = {**ANNUAL_LONG_EXPERIMENT,'version':'historical-dividend-v33-annual-long-hold',
                        'retention_yield':HOLD_EXPERIMENT['retention_yield'],'monthly_targets':HOLD_EXPERIMENT['monthly_targets']}
+FORWARD_CASH_FIELDS = ('dividend_policy','cash_decision','payout_inputs','payout_uncapped_median',
+                       'payout_latest_cap','cash_coverage_basis','fcf_coverage','payout',
+                       'cashflow_policy','latest_fcf','three_year_fcf','three_year_dividend_cash','cashflow_warning')
 
 
-def cohort_assessment(row, dossier, rules, *, earnings_basis='conservative_minimum'):
+def cohort_assessment(row, dossier, rules, *, earnings_basis='conservative_minimum', dividend_policy='implemented_only',
+                      cashflow_policy='latest_and_three_year'):
     """Reuse financial gates before ranking; price is evaluated later at each signal."""
-    result=dividend_assessment(row,dossier,rules,earnings_basis=earnings_basis)
+    result=dividend_assessment(row,dossier,rules,earnings_basis=earnings_basis,dividend_policy=dividend_policy,
+                               cashflow_policy=cashflow_policy)
     return {'eligible':result['state'] in ('满足价格条件','等待价格'),
-            'state':result['state'],'reason':result['reason'],'evidence_hash':result['evidence_hash']}
+            'state':result['state'],'reason':result['reason'],'evidence_hash':result['evidence_hash'],
+            **({key:result[key] for key in FORWARD_CASH_FIELDS if key in result}
+               if dividend_policy=='approved_annual_cash' else {})}
 
 
 def history_bounds(experiment):
@@ -78,11 +86,26 @@ def historical_basics(client, day):
 
 
 def protocol(cfg, experiment=EXPERIMENT, end=None):
+    capital_policy=experiment.get('capital_policy','fixed_amount')
+    if capital_policy not in ('fixed_amount','equity_ratio'):
+        raise AppError('未知仓位额度实验规则。')
+    if 'paper_capital_policy' in cfg and cfg['paper_capital_policy']!=capital_policy:
+        raise AppError('账户额度配置与登记政策不一致。')
+    if experiment.get('exit_policy','review_freeze') not in ('review_freeze','known_failure_exit'):
+        raise AppError('未知持仓退出实验规则。')
+    rebalance_policy=experiment.get('rebalance_policy','monthly_only')
+    if rebalance_policy not in ('monthly_only','after_confirmed_sale'):
+        raise AppError('未知补单执行实验规则。')
+    if rebalance_policy=='after_confirmed_sale' and experiment.get('exit_policy')!='known_failure_exit':
+        raise AppError('卖出成交后补单实验须与已知财务失败退出规则同用。')
     code_hash=hashlib.sha256()
-    for name in ('experiment.py','backtest.py','research.py','automatic.py','ledger.py','selection.py','industry.py','comparison.py','market.py','config.py','service.py','disclosures.json'):
+    for name in ('experiment.py','backtest.py','research.py','automatic.py','ledger.py','selection.py','industry.py','comparison.py','market.py','config.py','service.py','prepared_inputs.py','disclosures.json'):
         code_hash.update((Path(__file__).parent/name).read_bytes())
     code_hash.update((Path(__file__).parent.parent/'vendor/dividend_stock_research/dividend_price.py').read_bytes())
     return {**experiment,'suspension_valuation':experiment.get('suspension_valuation','verified_full_day_prior_close'),
+            'dividend_policy':experiment.get('dividend_policy','implemented_only'),
+            'cashflow_policy':experiment.get('cashflow_policy','latest_and_three_year'),
+            'capital_policy':capital_policy,
             'replay_end':end,'rules':load_rules(),'account_config':cfg,'engine_sha256':code_hash.hexdigest()}
 
 
@@ -91,7 +114,39 @@ def validate_experiment(experiment):
         raise AppError('未知停牌估值定义，未登记或回退为默认规则。')
     if experiment.get('earnings_basis','conservative_minimum') not in ('conservative_minimum','ttm'):
         raise AppError('未知实验盈利口径，未登记或回退为默认规则。')
+    dividend_policy=experiment.get('dividend_policy','implemented_only')
+    if dividend_policy not in ('implemented_only','approved_annual_cash'):
+        raise AppError('未知实验股息估计规则，未登记或回退为默认规则。')
     mode=experiment.get('entry_mode','yield_threshold')
+    if dividend_policy=='approved_annual_cash' and mode!='yield_rank':
+        raise AppError('已批准年度现金估计仅与完整年度候选的股息排序实验同用。')
+    cashflow_policy=experiment.get('cashflow_policy','latest_and_three_year')
+    if cashflow_policy not in ('latest_and_three_year','three_year_coverage'):
+        raise AppError('未知现金流覆盖实验规则。')
+    if cashflow_policy=='three_year_coverage' and (mode!='yield_rank' or dividend_policy!='approved_annual_cash'):
+        raise AppError('三年累计现金覆盖实验须在已批准年度现金股息排序规则上单独比较。')
+    capital_policy=experiment.get('capital_policy','fixed_amount')
+    if capital_policy not in ('fixed_amount','equity_ratio'):
+        raise AppError('未知仓位额度实验规则。')
+    if capital_policy=='equity_ratio' and cashflow_policy!='three_year_coverage':
+        raise AppError('净值比例额度实验须与三年累计现金覆盖股息排序规则单独比较。')
+    valuation_policy=experiment.get('valuation_policy','historical_gate')
+    if valuation_policy not in ('historical_gate','historical_context'):
+        raise AppError('未知历史估值分位实验规则。')
+    if valuation_policy=='historical_context' and (capital_policy!='equity_ratio'
+            or experiment.get('earnings_basis','conservative_minimum')!='conservative_minimum'):
+        raise AppError('历史分位观察实验须与净值比例额度及保守盈利规则单独比较。')
+    exit_policy=experiment.get('exit_policy','review_freeze')
+    if exit_policy not in ('review_freeze','known_failure_exit'):
+        raise AppError('未知持仓退出实验规则。')
+    if exit_policy=='known_failure_exit' and (capital_policy!='equity_ratio' or valuation_policy!='historical_gate'
+            or experiment.get('earnings_basis','conservative_minimum')!='conservative_minimum'):
+        raise AppError('已知筛选失败退出实验须使用完整年度股息排序、批准现金、三年覆盖、净值额度及保守盈利，保留历史分位门槛。')
+    rebalance_policy=experiment.get('rebalance_policy','monthly_only')
+    if rebalance_policy not in ('monthly_only','after_confirmed_sale'):
+        raise AppError('未知补单执行实验规则。')
+    if rebalance_policy=='after_confirmed_sale' and exit_policy!='known_failure_exit':
+        raise AppError('卖出成交后补单实验须与已知财务失败退出规则同用。')
     freeze_policy=experiment.get('freeze_policy','portfolio')
     if freeze_policy not in ('portfolio','position'):
         raise AppError('未知冻结范围，未回退为默认规则。')
@@ -172,10 +227,14 @@ def prepare_experiment(workspace, end, progress=print, cfg=None, experiment=EXPE
         if income and str(income[max(income)].get('comp_type')) in {'2','3','4','7'}:
             rejected.append({'symbol':code,'reason':'当时利润表为金融企业，模型不适用'});continue
         dossier=client.dossier(code,day if quality_first else end,start_year=financial_year)
-        row=summarize({**dossier,'as_of':day},{**basics[code],'name':name},quotes[code])
+        row=summarize({**dossier,'as_of':day},{**basics[code],'name':name},quotes[code],
+                      dividend_policy=experiment.get('dividend_policy','implemented_only'),
+                      cashflow_policy=experiment.get('cashflow_policy','latest_and_three_year'))
         quality={}
         if quality_first:
-            quality=cohort_assessment(row,dossier,rules,earnings_basis=experiment.get('earnings_basis','conservative_minimum'))
+            quality=cohort_assessment(row,dossier,rules,earnings_basis=experiment.get('earnings_basis','conservative_minimum'),
+                                      dividend_policy=experiment.get('dividend_policy','implemented_only'),
+                                      cashflow_policy=experiment.get('cashflow_policy','latest_and_three_year'))
             if not quality['eligible']:
                 rejected.append({'symbol':code,**quality});continue
         elif row.get('financial_company') or row['status']=='排除' or len(row['annual'])<5:
@@ -320,7 +379,9 @@ def experiment_signals(client, cohort, data, dossiers, names, history, amounts, 
             if memberships and memberships[0]['start']>day:continue
             active=memberships is None or any(m['start']<=day and (m['end'] is None or day<m['end']) for m in memberships)
             name=historical_name(names[code],day)
-            row=summarize({**dossiers[code],'as_of':day},{'name':name or '身份待核实','industry':stock['industry']},q)
+            row=summarize({**dossiers[code],'as_of':day},{'name':name or '身份待核实','industry':stock['industry']},q,
+                          dividend_policy=experiment.get('dividend_policy','implemented_only'),
+                          cashflow_policy=experiment.get('cashflow_policy','latest_and_three_year'))
             past_start=(datetime.strptime(day,'%Y%m%d')-timedelta(days=365*3)).strftime('%Y%m%d')
             pe=positive(q.get('pe_ttm'))
             values=[positive(r.get('pe_ttm')) for stamp,r in history_maps[code].items() if past_start<=stamp<day]
@@ -329,16 +390,37 @@ def experiment_signals(client, cohort, data, dossiers, names, history, amounts, 
             sector=industry_at(industries[code],day)
             peers_pe=sector_pe.get(sector['code'],[]) if sector else []
             enough=percentile is not None and len(peers_pe)>=5
-            valuation={'state':'待核实' if not enough else '通过' if pe<=25 and pe<=median(peers_pe) and percentile<=Decimal('.5') else '未通过',
+            historical_context=experiment.get('valuation_policy','historical_gate')=='historical_context'
+            valuation={'state':'待核实' if not enough else '通过' if pe<=25 and pe<=median(peers_pe) and (historical_context or percentile<=Decimal('.5')) else '未通过',
                        'reason':'正PE≤25、不高于当时申万一级行业正PE中位数，且自身三年正PE分位≤50%；历史成员按纳入/剔除日期匹配',
                        'percentile':str(percentile) if percentile is not None else None,'peer_count':len(peers_pe),
                        'industry_median_pe':str(median(peers_pe)) if peers_pe else None}
+            if historical_context:
+                valuation.update(policy='historical_context',
+                    reason='正PE≤25且不高于当时申万一级行业正PE中位数；自身三年正PE分位仅供观察，不限制数值，但仍需至少250个历史正PE样本及5个当时同行')
             liq=liquidity(amounts[code],[s for s in extended if s<=day][-20:],rules)
             row['selection']={'valuation':valuation,'liquidity':liq,'coarse_pass':bool(pe and positive(q.get('dv_ttm')) and dec(q['dv_ttm'])>=3)}
-            a=assess(row,{**dossiers[code],'as_of':day},rules,earnings_basis=experiment.get('earnings_basis','conservative_minimum'))
+            a=assess(row,{**dossiers[code],'as_of':day},rules,earnings_basis=experiment.get('earnings_basis','conservative_minimum'),
+                     dividend_policy=experiment.get('dividend_policy','implemented_only'),
+                     cashflow_policy=experiment.get('cashflow_policy','latest_and_three_year'),
+                     exit_policy=experiment.get('exit_policy','review_freeze'))
             if not name:a.update(state='待数据核实',reason='当时名称不可核实')
             if not sector or sector['label']!=stock['industry']:
                 a.update(state='待数据核实',reason='入池后行业变更或区间未知；保留持仓并停止新增，须重核行业风险')
+            if experiment.get('exit_policy')=='known_failure_exit':
+                decision=a['exit_decision']
+                if not name:decision['blockers'].append('identity_unresolved')
+                if not sector or sector['label']!=stock['industry']:
+                    decision['blockers'].append('industry_change_or_interval_unresolved')
+                if decision['blockers']:
+                    decision.update(validation_complete=False,action='freeze')
+                elif decision['failure_codes']:
+                    decision['action']='exit'
+                    a.update(state='排除',reason='已知筛选失败且资料校验完成，按既有月度规则退出；不再新增买入')
+                if decision['failure_codes']:
+                    a['scenarios']=[]
+                    for key in ('estimated_yield','estimated_eps','reference_price'):
+                        a.pop(key,None)
             if not active and a['state']!='待数据核实':
                 a.update(state='退出研究池',reason='年度研究池已退出，按下一交易日限价退出；未复用下一期名单到此前日期')
             rank=experiment.get('entry_mode')=='yield_rank' and a['state'] in ('满足价格条件','等待价格')
@@ -354,7 +436,10 @@ def experiment_signals(client, cohort, data, dossiers, names, history, amounts, 
             assessed.append({'symbol':code,'state':a['state'],'reason':a['reason'],'evidence_hash':a.get('evidence_hash'),
                              'active':active,'dimensions':a['dimensions'],'coarse_pass':row['selection']['coarse_pass'],
                              'estimated_yield':a.get('estimated_yield'),
+                             **({key:a[key] for key in FORWARD_CASH_FIELDS if key in a}
+                                if experiment.get('dividend_policy')=='approved_annual_cash' else {}),
                              **({key:a[key] for key in ('financial_gaps','zero_cash_periods','zero_cash_decisions') if key in a}),
+                             **({'exit_decision':a['exit_decision']} if 'exit_decision' in a else {}),
                              **({'valuation_reference_price':a['reference_price'],'order_limit':order_limit} if rank else {}),
                              **({'data_warnings':row['data_warnings']} if row.get('data_warnings') else {}),
                              **({'holding_eligible':holding_eligible} if experiment.get('retention_yield') is not None else {})})
@@ -490,9 +575,21 @@ def run_experiment(workspace, end, cfg, progress=print, experiment=EXPERIMENT):
             diagnostics={'evaluations':len(assessments),'states':dict(Counter(a['state'] for a in assessments)),
                          'reasons':[{'reason':reason,'count':count} for reason,count in Counter(a['reason'] for a in assessments if a['state'] not in ('满足价格条件','排序候选')).most_common()],
                          'skips':[],**entry_diagnostics(audits,signals,experiment.get('entry_mode','yield_threshold'))}
+            if experiment.get('dividend_policy')=='approved_annual_cash':
+                diagnostics['cash_estimates']={'evaluations':len(assessments),
+                    'stages':dict(Counter((a.get('cash_decision') or {}).get('stage','not_recorded') for a in assessments)),
+                    'coverage_bases':dict(Counter(a.get('cash_coverage_basis','not_recorded') for a in assessments))}
+            if experiment.get('cashflow_policy')=='three_year_coverage':
+                diagnostics['cashflow_policy']={'policy':'three_year_coverage','evaluations':len(assessments),
+                    'nonpositive_latest_observations':[
+                        {'day':month['day'],'symbol':a['symbol'],'state':a['state'],'active':a['active'],
+                         **{key:a[key] for key in ('cashflow_warning','latest_fcf','three_year_fcf','three_year_dividend_cash','fcf_coverage') if key in a}}
+                        for month in audits for a in month['assessments'] if a.get('cashflow_warning')]}
         try:
             result=simulate(data,signals,cfg,initial_cash=cfg['paper_cash'],max_holdings=load_rules()['max_holdings'],
-                            freeze_policy=experiment.get('freeze_policy','portfolio'))
+                            freeze_policy=experiment.get('freeze_policy','portfolio'),
+                            capital_policy=experiment.get('capital_policy','fixed_amount'),
+                            **({'rebalance_policy':'after_confirmed_sale'} if experiment.get('rebalance_policy')=='after_confirmed_sale' else {}))
             if rate==experiment['primary_entry_yield']:
                 held_freezes=holding_freeze_diagnostics(result,signals,audits,data,experiment.get('freeze_policy','portfolio'))
                 primary_metrics=result['metrics']
@@ -530,6 +627,7 @@ def run_experiment(workspace, end, cfg, progress=print, experiment=EXPERIMENT):
     if experiment.get('cohort_limit',experiment['pool_size']) is None:
         scope='每年末检查全部初筛候选，财务合格者不按20截断；月末完整筛选后最多20只持仓，年中未额外扫描全市场；'
     output={'status':'diagnostic' if periods else 'blocked','title':'独立历史股票池 · 原始价格成交回放','as_of':end,'protocol':experiment,'runs':runs,
+        'source_engine_sha256':protocol(cfg,experiment,end)['engine_sha256'],
         'initial_cash':cfg['paper_cash'],'primary_metrics':primary_metrics,'selection_audit':cohort,
         'coverage':coverage,'message':f"区间 {data['sessions'][0]}—{end}，{len(data['sessions'])} 个交易日、累计涉及{len(cohort['stocks'])}只股票。输入疑点 {len(data.get('errors',{}))} 项。",
         'comparison_series':comparison_series,'diagnostics':diagnostics,'period_diagnostics':periods,
@@ -542,6 +640,16 @@ def run_experiment(workspace, end, cfg, progress=print, experiment=EXPERIMENT):
                         else '任一实际持仓资料待核实即暂停组合全部新增买单，包括加仓；其他持仓仍可能卖出。'),
                        '仅对逐交易日都有当时可获知全天停牌证据的区间，按最后真实收盘价计算持仓账面金额，并保留原价日期；不生成成交行情，不代表当日公允或可变现价格。未知间隙、行情冲突及跨除权除息仍阻断。',
                        '当前为税前现金及股份分派与保守费用；仅入账公告已核实且新增股数为整数的送转，未核实/零碎股或持仓估值缺失会阻断，不删除异常股票来美化收益。']}
+    if experiment.get('cashflow_policy')=='three_year_coverage':
+        output['limitations'].append('仅取消最新完整年度自由现金流必须为正的否决；三年累计须覆盖同口径总现金分红，单年非正事实保留。累计覆盖可能掩盖近期恶化，不能证明当前可自由分配现金。')
+    if experiment.get('capital_policy')=='equity_ratio':
+        output['limitations'].append('单股与行业额度按初始金额占初始本金的比例随当日净值涨跌；20只及10%现金限制不变。应收股息计入净值但不可用于付款，待买单不是资产；冻结股数和被动超限不新增每日强制减持。')
+    if experiment.get('valuation_policy')=='historical_context':
+        output['limitations'].append('自身近三年正PE分位继续披露，仍要求至少250个历史正PE样本及5个当时同行，只取消分位≤50%的数值否决；正PE≤25、同行中位数和保守盈利PE≤25仍约束买入。取消相对估值上限可能增加高位买入与回撤，不代表便宜或收益改善。')
+    if experiment.get('exit_policy')=='known_failure_exit':
+        output['limitations'].append('仅将资料校验完整后的三年现金覆盖不足、短债覆盖不足与资料未知分开：继续拒绝买入，按原月度规则退出。行业变更或区间未知仍冻结；财务校验不代替账本股数、股份权益、停牌及真实成交校验，仍可能阻断回放。')
+    if experiment.get('rebalance_policy')=='after_confirmed_sale':
+        output['limitations'].append('仅对月末因持仓数量上限未创建的原目标买单，在下一交易日卖单真实成交后的收盘按现金与空位补一次，最早再下一交易日执行；限价和股数不超过原目标，不追涨、不在卖出当日开盘回填，也不重试未成交买单。')
     atomic_json(path/'summary.json',output)
     atomic_json(workspace/'backtests'/'latest.json',output)
     return output

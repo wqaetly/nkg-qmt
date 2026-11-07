@@ -3,6 +3,7 @@ import hashlib
 import json
 import unittest
 from decimal import Decimal
+from unittest.mock import patch
 
 from qmt.backtest import simulate
 from qmt.config import AppError, load_config
@@ -184,16 +185,83 @@ class DisclosedDataTests(unittest.TestCase):
             self.assertEqual(event['stock_list_date'],correction['stock_list_date'])
             self.assertEqual(event['correction_fingerprint'],hashlib.sha256(json.dumps(original,sort_keys=True).encode()).hexdigest())
             self.assertEqual(event['correction_originals'],[original])
+            self.assertEqual(event['correction_source_sha256'],correction['source_sha256'])
             self.assertEqual(original,correction['expected'])
             self.assertEqual(implemented_dividends(events,correction['available_on']),events)
 
-    def test_later_annual_evidence_is_not_backfilled_into_earlier_signal(self):
-        fangda=DISCLOSURES['stock_only'][1]['expected']
-        self.assertEqual(normalize_stock_only([fangda],'20210316'),[fangda])
-        with self.assertRaises(AppError):implemented_dividends([fangda],'20210316')
-        self.assertEqual(implemented_dividends([fangda],'20210317')[0]['cash_div_tax'],'0')
-        cosco=DISCLOSURES['stock_only'][0]['expected']
-        self.assertEqual(implemented_dividends([cosco],'20210707'),[])
+    def test_stock_only_evidence_uses_actual_publication_boundary(self):
+        for item in DISCLOSURES['stock_only']:
+            raw=copy.deepcopy(item['expected'])
+            self.assertEqual(normalize_stock_only([raw],raw['ann_date']),[raw])
+            self.assertEqual(implemented_dividends([raw],raw['ann_date']),[])
+            self.assertEqual(implemented_dividends([raw],item['available_on'])[0]['cash_div_tax'],'0')
+
+    def test_later_evidence_is_not_backfilled_and_may_follow_listing(self):
+        item=copy.deepcopy(DISCLOSURES['stock_only'][1])
+        item['available_on']='20210317'
+        raw=copy.deepcopy(item['expected'])
+        with patch.dict(DISCLOSURES,{'stock_only':[item]}):
+            self.assertEqual(normalize_stock_only([raw],'20210316'),[raw])
+            with self.assertRaises(AppError):implemented_dividends([raw],'20210316')
+            self.assertEqual(implemented_dividends([raw],'20210317')[0]['cash_div_tax'],'0')
+
+    def test_stock_only_duplicate_registration_rejected_but_raw_duplicates_deduplicate(self):
+        item=copy.deepcopy(DISCLOSURES['stock_only'][0]); raw=copy.deepcopy(item['expected'])
+        self.assertEqual(len(implemented_dividends([raw,copy.deepcopy(raw)],'20210708')),1)
+        for changed_expected in ({},{'stk_div':.4},{'stk_div':.4,'imp_ann_date':'20210709'},
+                                 {'end_date':'20200630'}):
+            other=copy.deepcopy(item); other['expected'].update(changed_expected)
+            other['available_on']='20210709'
+            with patch.dict(DISCLOSURES,{'stock_only':[item,other]}),self.assertRaisesRegex(AppError,'登记重复或冲突'):
+                implemented_dividends([raw,copy.deepcopy(other['expected'])],'20210710')
+        future={**item,'available_on':'20210709','source':'invalid'}
+        with patch.dict(DISCLOSURES,{'stock_only':[item,future]}):
+            self.assertEqual(len(implemented_dividends([raw],'20210708')),1)
+            with self.assertRaisesRegex(AppError,'登记重复或冲突'):normalize_stock_only([raw],'20210709')
+
+    def test_stock_only_original_and_canonical_view_preserve_json_types(self):
+        item=copy.deepcopy(DISCLOSURES['stock_only'][0]); item['expected']['stk_div']=1.0
+        raw=copy.deepcopy(item['expected'])
+        with patch.dict(DISCLOSURES,{'stock_only':[item]}):
+            event=implemented_dividends([raw],'20210708')[0]
+            for value in (1,True):
+                changed={**raw,'stk_div':value}
+                self.assertEqual(normalize_stock_only([changed],'20210708'),[changed])
+                with self.assertRaises(AppError):implemented_dividends([changed],'20210708')
+                with self.assertRaises(AppError):implemented_dividends([{**event,'stk_div':value}],'20210708')
+            self.assertIs(type(event['correction_originals'][0]['stk_div']),float)
+            event['correction_originals'][0]['stk_div']=2
+            self.assertEqual(raw['stk_div'],1.0)
+            self.assertEqual(item['expected']['stk_div'],1.0)
+
+    def test_stock_only_source_and_temporal_validation(self):
+        original=copy.deepcopy(DISCLOSURES['stock_only'][0]); raw=copy.deepcopy(original['expected'])
+        for changes in ({'source':'http://example.com/proof.pdf'},{'source':'https://name:secret@example.com/proof.pdf'},
+                        {'source_sha256':'bad'},{'source_sha256':None},{'pages':False},{'pages':''},
+                        {'available_on':'20210707'},{'stock_list_date':'20210713'}):
+            with self.subTest(changes=changes),patch.dict(DISCLOSURES,{'stock_only':[{**original,**changes}]}):
+                with self.assertRaises(AppError):normalize_stock_only([raw],'20210708')
+        future={**original,'available_on':'20210709','source_sha256':'bad'}
+        with patch.dict(DISCLOSURES,{'stock_only':[future]}):
+            self.assertEqual(normalize_stock_only([raw],'20210708'),[raw])
+            with self.assertRaises(AppError):normalize_stock_only([raw],'20210709')
+        before=implemented_dividends([raw],'20210708')[0]
+        with patch.dict(DISCLOSURES,{'stock_only':[{**original,'source_sha256':'a'*64}]}):
+            after=implemented_dividends([raw],'20210708')[0]
+        self.assertNotEqual(before,after)
+        self.assertEqual(before['correction_fingerprint'],after['correction_fingerprint'])
+
+    def test_stock_only_registration_cannot_supply_cash_or_invalid_event_dates(self):
+        original=copy.deepcopy(DISCLOSURES['stock_only'][0])
+        for changes in ({'cash_div_tax':0},{'pay_date':'20210714'},{'stk_div':0},{'div_proc':'预案'},
+                        {'end_date':'20211231'},{'record_date':'20210714'},{'record_date':'20210707'},{'ts_code':'bad'}):
+            item=copy.deepcopy(original); item['expected'].update(changes)
+            with self.subTest(changes=changes),patch.dict(DISCLOSURES,{'stock_only':[item]}):
+                with self.assertRaises(AppError):normalize_stock_only([copy.deepcopy(item['expected'])],'20210708')
+        for missing in ('cash_div_tax','pay_date'):
+            item=copy.deepcopy(original); del item['expected'][missing]
+            with patch.dict(DISCLOSURES,{'stock_only':[item]}),self.assertRaises(AppError):
+                normalize_stock_only([copy.deepcopy(item['expected'])],'20210708')
 
     def test_raw_mismatch_never_gets_zero_or_invented_pay_date(self):
         original=DISCLOSURES['stock_only'][0]['expected']

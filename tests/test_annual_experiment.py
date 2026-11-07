@@ -83,7 +83,7 @@ class AnnualExperimentTests(unittest.TestCase):
             unknown=row['symbol']==A and row['as_of']==DATES[1]
             return {'state':'待数据核实' if unknown else '满足价格条件','reason':'测试数据状态',
                     'estimated_yield':'.06','reference_price':'9','dimensions':{},'evidence_hash':'test'}
-        with patch('qmt.experiment.summarize',side_effect=lambda d,b,q:{'symbol':d['symbol'],'as_of':d['as_of']}), \
+        with patch('qmt.experiment.summarize',side_effect=lambda d,b,q,**kwargs:{'symbol':d['symbol'],'as_of':d['as_of']}), \
              patch('qmt.experiment.assess',side_effect=assess), \
              patch('qmt.experiment.industry_at',return_value={'code':'801000.SI','label':'测试行业'}), \
              patch('qmt.experiment.liquidity',return_value={'state':'通过'}):

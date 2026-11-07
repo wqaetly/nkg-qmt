@@ -5,7 +5,7 @@ import re
 from collections import Counter
 from pathlib import Path
 
-from .config import ROOT, AppError, date_key, dec, now_cn
+from .config import ROOT, AppError, date_key, dec, money, now_cn
 from .context import safe_url
 from .selection import automatic_path
 
@@ -24,8 +24,9 @@ def number(value, places=2):
     if value is None:
         return "—"
     try:
-        return f"{float(value):,.{places}f}"
-    except (ValueError,TypeError):
+        numeric=float(value)
+        return f"{numeric:,.{places}f}" if math.isfinite(numeric) else '—'
+    except (ValueError,TypeError,OverflowError):
         return "—"
 
 
@@ -73,11 +74,111 @@ def freeze_policy_note(protocol):
     return f'<p id="freeze-policy">历史实验冻结政策：{esc(freeze_policy_label(protocol))}。{esc(note)}日常模拟规则未随此实验改变。</p>'
 
 
+def capital_ratios(protocol):
+    try:
+        cfg=protocol['account_config']
+        initial=money(cfg['paper_cash'])
+        position,sector=(money(cfg[key]) for key in ('paper_max_position','paper_max_sector'))
+        return (position/initial,sector/initial) if 0<position<=sector<=initial else None
+    except (AppError,KeyError,TypeError):
+        return None
+
+
+def capital_policy_note(protocol, registered=None):
+    policy=protocol.get('capital_policy','fixed_amount')
+    if policy not in ('fixed_amount','equity_ratio'):
+        return f'<p id="capital-policy">资金规则待核实：未识别 {esc(policy)}，不按固定金额解释。</p>'
+    if registered and (registered.get('version')!=protocol.get('version') or registered.get('capital_policy','fixed_amount')!=policy):
+        return '<p id="capital-policy">资金规则待核实：归档协议与当前摘要不一致。</p>'
+    source=registered or protocol; cfg=source.get('account_config',{})
+    if policy=='fixed_amount':
+        try:
+            position,sector=(money(cfg[key]) for key in ('paper_max_position','paper_max_sector'))
+            if not 0<position<=sector:
+                position=sector=None
+        except (AppError,KeyError,TypeError):
+            position=sector=None
+        return f'<p id="capital-policy">历史资金规则：固定金额上限，单股 ¥{number(position)}、行业 ¥{number(sector)}；额度不随净值变化。未记录或未核实金额显示 —，不采用当前配置补填。</p>'
+    ratios=capital_ratios(source)
+    if ratios is None:
+        return '<p id="capital-policy">历史资金规则：按净值比例；初始本金或额度未核实，暂不显示比例。</p>'
+    slots=source.get('rules',{}).get('max_holdings')
+    allocation=(f'保留 10% 现金，按 {slots} 个等权槽位分配，每股目标预算 {percent(min(ratios[0],dec(".9")/slots))} 净值；' if type(slots) is int and 1<=slots<=20
+                else '等权槽位未记录，目标预算待核实；')
+    return f'<p id="capital-policy">历史资金规则：按净值比例，单股上限 {percent(ratios[0])}、行业上限 {percent(ratios[1])}。比例以原始单股/行业金额上限除以初始本金固定，金额随净值涨跌。{allocation}不要求买满，仍受行业、现金及整手约束。冻结股保留原数量；价格被动超限不自动触发日内卖出。</p>'
+
+
+def valuation_policy_note(protocol, registered=None):
+    policy=protocol.get('valuation_policy','historical_gate')
+    if policy not in ('historical_gate','historical_context'):
+        return f'<p id="valuation-policy">估值规则待核实：未识别 {esc(policy)}。</p>'
+    if (registered and (registered.get('version')!=protocol.get('version') or registered.get('valuation_policy','historical_gate')!=policy)
+            or policy=='historical_context' and not registered):
+        return '<p id="valuation-policy">估值规则待核实：归档协议缺失或与当前摘要不一致。</p>'
+    if policy=='historical_gate':
+        return ''
+    return '<p id="valuation-policy">历史估值实验：自身三年 PE 分位仅作参考，已知分位超过 50% 不单独否决；仍须正 PE≤25、不高于当时行业正 PE 中位数、保守盈利 PE≤25。历史正 PE 至少 250 个样本、同行至少 5 家，资料缺失仍待核实；日常规则不变。</p>'
+
+
+def exit_policy_note(protocol, registered=None):
+    policy=protocol.get('exit_policy','review_freeze')
+    if policy not in ('review_freeze','known_failure_exit'):
+        return f'<p id="exit-policy">退出规则待核实：未识别 {esc(policy)}。</p>'
+    if (registered and (registered.get('version')!=protocol.get('version') or registered.get('exit_policy','review_freeze')!=policy)
+            or policy=='known_failure_exit' and (not registered or not protocol.get('version'))):
+        return '<p id="exit-policy">退出规则待核实：归档协议缺失或与当前摘要不一致。</p>'
+    if policy=='review_freeze':
+        return ''
+    return '<p id="exit-policy">历史退出实验：仅在月末评估中，已知三年累计 FCF 覆盖不足或短债覆盖不足且资料完整校验通过时，允许持仓按原月度交易规则退出；仍拒绝买入。资料缺失或冲突仍冻结，行业变更或区间未知仍冻结。允许退出不等于已成交，仍受停牌、真实行情、股份权益及成交规则约束；不改变年度选股、预测公式或日常模拟。</p>'
+
+
+def rebalance_policy_note(protocol, registered=None):
+    policy=protocol.get('rebalance_policy','monthly_only')
+    if policy not in ('monthly_only','after_confirmed_sale'):
+        return f'<p id="rebalance-policy">补单规则待核实：未识别 {esc(policy)}。</p>'
+    if (registered and (registered.get('version')!=protocol.get('version') or registered.get('rebalance_policy','monthly_only')!=policy)
+            or policy=='after_confirmed_sale' and (not registered or not protocol.get('version'))):
+        return '<p id="rebalance-policy">补单规则待核实：归档协议缺失或与当前摘要不一致。</p>'
+    if policy=='monthly_only':
+        return ''
+    return '<p id="rebalance-policy">执行实验：仅对月末因持仓数量上限未创建的原目标买单，在下一交易日卖单真实成交后，收盘按现金与空位补一次，最早再下一交易日执行。限价和股数不超过原目标；不追涨、不在卖出当日开盘回填、不重试未成交买单。筛选、20只上限、行业额度及冻结规则不变；允许补单不等于已经成交。</p>'
+
+
+def approved_cash_note(protocol, diagnostics):
+    if protocol.get('dividend_policy')!='approved_annual_cash':
+        return ''
+    detail=diagnostics.get('cash_estimates',{})
+    stages={'approved':'已批准未实施','implemented':'已实施公告','unresolved':'待核实','not_recorded':'未记录'}
+    bases={'commitment':'承诺现金覆盖','implemented_announcements':'已实施公告现金覆盖','not_recorded':'未记录'}
+    counts=[]
+    for label,values,names in (('方案阶段',detail.get('stages',{}),stages),('现金覆盖口径',detail.get('coverage_bases',{}),bases)):
+        if values:
+            counts.append(f'<p>{label}：'+ '；'.join(f'{esc(names.get(key,"未识别"))} {esc(value)} 次' for key,value in values.items())+'。</p>')
+    return '<div id="dividend-policy"><p>历史实验股息估计规则：已批准年度现金估计。已批准方案只用于前瞻估计和承诺现金覆盖，不是本账户实际到账，不生成现金流水或分红标记。实际权益仍只按已实施事件结算。</p><p>q 为同一财政年度的普通现金估算总额 / 归母利润；支付率取近三年 q 中位数、最新年度 q 与 1 三者最小。最新年度已经实施时也受最新 q 上限约束。普通现金估算不等于可持续分红已获证明。</p>'+''.join(counts)+'<p class="muted">阶段与覆盖次数按全部月度公司评估记录计数，包含退出名单后的跟踪；不是持股、订单、成交或到账次数。待核实和未记录不补零；日常模拟规则未随此实验改变。</p></div>'
+
+
 def experiment_history_panel(workspace):
     versions={}
     for path in sorted((workspace/'backtests').glob('*/summary.json')):
         summary=optional_report(path)
-        protocol=optional_report(path.with_name('protocol.json')) or summary.get('protocol',{})
+        registered=optional_report(path.with_name('protocol.json'))
+        protocol=registered or summary.get('protocol',{})
+        valuation_policy=protocol.get('valuation_policy','historical_gate')
+        valuation_mismatch=(valuation_policy not in ('historical_gate','historical_context')
+            or summary.get('protocol',{}).get('valuation_policy','historical_gate')!=valuation_policy
+            or valuation_policy=='historical_context' and (not registered.get('version')
+                or registered.get('version')!=summary.get('protocol',{}).get('version')))
+        exit_policy=protocol.get('exit_policy','review_freeze')
+        exit_mismatch=(exit_policy not in ('review_freeze','known_failure_exit')
+            or summary.get('protocol',{}).get('exit_policy','review_freeze')!=exit_policy
+            or registered and registered.get('version')!=summary.get('protocol',{}).get('version')
+                and (exit_policy=='known_failure_exit' or 'exit_policy' in registered or 'exit_policy' in summary.get('protocol',{}))
+            or exit_policy=='known_failure_exit' and not registered.get('version'))
+        rebalance_policy=protocol.get('rebalance_policy','monthly_only')
+        rebalance_mismatch=(rebalance_policy not in ('monthly_only','after_confirmed_sale')
+            or summary.get('protocol',{}).get('rebalance_policy','monthly_only')!=rebalance_policy
+            or rebalance_policy=='after_confirmed_sale' and (not registered.get('version')
+                or registered.get('version')!=summary.get('protocol',{}).get('version')))
         version=protocol.get('version',path.parent.name)
         primary_labels=(('股息排序 · 全期','股息排序') if protocol.get('entry_mode')=='yield_rank'
                         else ('5%股息门槛 · 全期','税前股息门槛 5%') if protocol.get('entry_mode','yield_threshold')=='yield_threshold' else ())
@@ -85,13 +186,27 @@ def experiment_history_panel(workspace):
                       if run.get('label') in primary_labels), {})
         state=summary.get('status') or primary.get('status') or 'pending'
         metrics=summary.get('primary_metrics',primary.get('metrics',{}))
-        if state=='blocked' or primary.get('status')=='blocked':
+        if state=='blocked' or primary.get('status')=='blocked' or valuation_mismatch or exit_mismatch or rebalance_mismatch:
             state='blocked'
             metrics={}
         coverage=summary.get('coverage',{})
         cash=summary.get('initial_cash',summary.get('account',{}).get('initial_cash',protocol.get('account_config',{}).get('paper_cash')))
         period=f"¥ {number(cash)} · {coverage.get('start',protocol.get('selection_day','—'))}—{coverage.get('end',summary.get('as_of',protocol.get('replay_end','—')))}"
         cohort=f"{version} · 首次建池 {protocol.get('selection_day','—')} · 累计 {coverage.get('stocks','—')} 只"
+        if protocol.get('dividend_policy')=='approved_annual_cash':
+            cohort+=' · 已批准年度现金估计'
+        if valuation_mismatch:
+            cohort+=' · 估值规则待核实：归档缺失、规则未知或与摘要不一致'
+        elif valuation_policy=='historical_context':
+            cohort+=' · 历史 PE 分位仅作参考'
+        if exit_mismatch:
+            cohort+=' · 退出规则待核实：归档缺失、规则未知或与摘要不一致'
+        elif exit_policy=='known_failure_exit':
+            cohort+=' · 已知财务失败月度退出，行业变更仍冻结'
+        if rebalance_mismatch:
+            cohort+=' · 补单规则待核实：归档缺失、规则未知或与摘要不一致'
+        elif rebalance_policy=='after_confirmed_sale':
+            cohort+=' · 卖出成交后一次补单'
         versions[version]=[cohort,period,EXPERIMENT_STATES.get(state,state),percent(metrics.get('cagr')),
                            percent(metrics.get('average_exposure')),number(metrics.get('costs')),earnings_basis_label(protocol),entry_mode_label(protocol),freeze_policy_label(protocol)]
     if not versions:
@@ -147,12 +262,30 @@ def period_diagnostics_panel(data):
     {summary if has_rolling else ''}{'<p class="muted">滚动三年统计汇总同一条历史资产曲线的不同窗口。重叠窗口不是独立样本，正收益占比不是未来盈利概率。</p>' if has_rolling else ''}</details>'''
 
 
-def forecast_diagnostic_panel(data):
+def forecast_diagnostic_panel(data, backtest=None, registered_protocol=None):
     if not data:
         return ''
-    opening='<details class="panel research-results" id="forecast-diagnostic"><summary>股息估计回溯诊断</summary>'
-    if data.get('version')!='dividend-forecast-v1' or data.get('status')!='diagnostic':
-        return opening+'<p class="muted">诊断记录不可用，未用旧结果或零误差替代。</p></details>'
+    backtest=backtest or {}; protocol=backtest.get('protocol',{})
+    engine=backtest.get('source_engine_sha256')
+    matching=bool(isinstance(engine,str) and re.fullmatch('[0-9a-f]{64}',engine)
+        and data.get('source_engine_sha256')==engine and data.get('source_version'))
+    for key,default,allowed in (('dividend_policy','implemented_only',('implemented_only','approved_annual_cash')),
+                               ('cashflow_policy','latest_and_three_year',('latest_and_three_year','three_year_coverage')),
+                               ('capital_policy','fixed_amount',('fixed_amount','equity_ratio')),
+                               ('valuation_policy','historical_gate',('historical_gate','historical_context')),
+                               ('exit_policy','review_freeze',('review_freeze','known_failure_exit')),
+                               ('rebalance_policy','monthly_only',('monthly_only','after_confirmed_sale'))):
+        matching=matching and protocol.get(key,default) in allowed and data.get(key,default)==protocol.get(key,default)
+    if registered_protocol or protocol.get('valuation_policy')=='historical_context' or protocol.get('exit_policy')=='known_failure_exit' or protocol.get('rebalance_policy')=='after_confirmed_sale':
+        matching=matching and bool(registered_protocol and registered_protocol.get('version')==protocol.get('version')
+            and registered_protocol.get('valuation_policy','historical_gate')==protocol.get('valuation_policy','historical_gate')
+            and registered_protocol.get('exit_policy','review_freeze')==protocol.get('exit_policy','review_freeze')
+            and registered_protocol.get('rebalance_policy','monthly_only')==protocol.get('rebalance_policy','monthly_only')
+            and (protocol.get('exit_policy')!='known_failure_exit' and protocol.get('rebalance_policy')!='after_confirmed_sale' or protocol.get('version')))
+    title='独立预测诊断' if matching else '其他版本的预测诊断'
+    opening=f'<details class="panel research-results" id="forecast-diagnostic"><summary>{title}</summary>'
+    if data.get('version') not in ('dividend-forecast-v1','dividend-forecast-v1-approved-cash') or data.get('status')!='diagnostic':
+        return opening+f'<p class="muted">来源 {esc(data.get("source_version"))}。诊断记录不可用，未用旧结果或零误差替代。</p></details>'
     coverage=data.get('coverage',{})
     rows=[]
     yearly_coverage=[]
@@ -382,7 +515,42 @@ def suspension_valuations_panel(data):
     <p class="muted">沿用前收盘仅作持仓账面估值，不代表当日成交价或公允价值；禁止以此价格模拟当日成交。估值方法或禁止成交标记缺失、异常时显示未核实。原价格日是行情发生日期，证明可获知日是证据当时可用的日期，两者不同；不补画停牌日 K 线或买卖标记。</p>{details}</div>'''
 
 
-def research_panel(research, backtest, chart_symbols=(), history=''):
+def historical_overview(backtest):
+    if not backtest:
+        return ''
+    protocol=backtest.get('protocol',{}); coverage=backtest.get('coverage',{})
+    status=backtest.get('status','pending')
+    metrics=backtest.get('primary_metrics',{}) if status in ('diagnostic','complete') else {}
+    diagnostics=backtest.get('diagnostics',{}); months=diagnostics.get('candidate_months',{})
+    latest=diagnostics.get('holding_freezes',{}).get('latest') or {}
+    gaps=diagnostics.get('financial_gaps')
+    gap_count=str(len(gaps)) if isinstance(gaps,list) else '未记录'
+    observations=diagnostics.get('cashflow_policy',{}).get('nonpositive_latest_observations',[])
+    warning=(f'<p class="notice" id="cashflow-warning">最新年度自由现金流非正：{len(observations)} 条历史评估记录。'
+             '<a href="#cashflow-policy">查看金额与覆盖依据</a>；这是评估次数，不是现金闲置金额或原因分摊。</p>') if observations else ''
+    blocked=f'<p class="notice">{esc(backtest.get("message") or "策略结果尚不可用，指标未补零。")}</p>' if status=='blocked' else ''
+    return f'''<section class="panel" id="strategy-overview"><div class="section-title"><h2>历史主方案</h2><span class="pill">{esc(EXPERIMENT_STATES.get(status,status))}</span></div>
+    <p class="muted">{esc(coverage.get('start',protocol.get('selection_day')))}—{esc(coverage.get('end',backtest.get('as_of')))} · 模拟本金 ¥ {number(backtest.get('initial_cash',protocol.get('account_config',{}).get('paper_cash')))} · 历史模拟，非收益承诺</p>{blocked}
+    <div class="research-summary"><div><small>年化收益</small><strong>{percent(metrics.get('cagr'))}</strong><span>累计收益 {percent(metrics.get('total_return'))}</span></div><div><small>最大回撤</small><strong>{percent(metrics.get('max_drawdown'))}</strong><span>累计费用 ¥ {number(metrics.get('costs'))}</span></div><div><small>平均仓位</small><strong>{percent(metrics.get('average_exposure'))}</strong><span>按历史每日净值统计</span></div></div>
+    <p id="capital-usage">月末评估 {esc(months.get('months'))} 次，其中 {esc(months.get('empty'))} 次无候选。<a href="#research-diagnostics">查看筛选与交易限制记录</a>；次数不等于闲置现金归因。</p>
+    <p id="overview-data-gaps">历史字段缺口 {esc(gap_count)} 条 · 最近评估 {esc(latest.get('day'))}，冻结持仓 {esc(latest.get('held_frozen'))} 只。<a href="#research-diagnostics">查看未解决事项</a></p>{warning}
+    <p><a href="#chart-panel">查看 K 线与操作</a> · <a href="#research-lab">当前观察名单</a></p></section>'''
+
+
+def cashflow_policy_note(protocol, diagnostics):
+    policy=protocol.get('cashflow_policy','latest_and_three_year')
+    label={'latest_and_three_year':'最新年度自由现金流为正，且三年累计覆盖三年总分红。',
+           'three_year_coverage':'仅要求三年累计自由现金流覆盖三年总分红；单年非正保留为风险提醒。'}.get(policy,'未识别现金流规则，须核对协议。')
+    rows=diagnostics.get('cashflow_policy',{}).get('nonpositive_latest_observations',[])
+    details=table(['评估日','公司','所属年度','最新年度自由现金流 / 元','当时状态','当期候选','三年自由现金流 / 元','三年总分红 / 元','原因'],[
+        [row.get('day'),row.get('symbol'),row.get('cashflow_warning',{}).get('period'),number(row.get('cashflow_warning',{}).get('simple_fcf')),
+         row.get('state'),'是' if row.get('active') is True else '否' if row.get('active') is False else '—',
+         number(row.get('three_year_fcf')),number(row.get('three_year_dividend_cash')),row.get('cashflow_warning',{}).get('reason')]
+        for row in rows]) if rows else ''
+    return f'<div id="cashflow-policy"><p>现金流规则：{esc(label)}</p>{details}</div>'
+
+
+def research_panel(research, backtest, chart_symbols=(), history='', registered_protocol=None):
     if not research and not backtest and not history:
         return ''
     stocks=research.get('stocks',[])
@@ -477,16 +645,16 @@ def research_panel(research, backtest, chart_symbols=(), history=''):
     earnings_note=f'<p id="earnings-basis">历史实验盈利口径：{esc(earnings_label)}。{esc(earnings_formula)}这是机械口径对照，不等同于正常化盈利，也不代表收益已验证。</p>' if backtest else ''
     entry_card=f'<span>入场方式：{esc(entry_mode_label(protocol))}</span>' if backtest else ''
     freeze_card=f'<span>冻结政策：{esc(freeze_policy_label(protocol))}</span>' if backtest else ''
+    cash_card='<span>股息估计：已批准年度现金估计</span>' if backtest and protocol.get('dividend_policy')=='approved_annual_cash' else ''
     entry_note=('<p class="muted" id="entry-mode">历史实验按股息排序：每月末对通过财务、估值、流动性及历史 TTM 股息率至少 3% 初筛的候选，按预计股息率降序分配。最多持仓 20 只，继续受资金和行业上限约束。5% 只作情景计算参考，不作为入场条件或买入限价上限；日常模拟规则未随此实验改变。</p>' if ranked else '')
     target_note=f'<p>回放调仓规则：{esc(protocol["monthly_targets"])}</p>' if protocol.get('monthly_targets') else ''
     message=backtest.get('message') or research.get('backtest',{}).get('message') or research.get('message','')
     return f'''<section class="panel research-lab" id="research-lab"><div class="section-title"><h2>策略研究台</h2><span class="pill">手动运行 · 不启用定时任务</span></div>
-    <div class="research-summary"><div><small>研究目标</small><strong>年化 ≥ 10%</strong><span>待验证，不是收益承诺</span></div><div><small>股票研究池</small><strong>{len(stocks)} / {esc(research.get('target_count',20))}</strong><span>研究对象，不等于持仓数量</span></div><div><small>历史检验状态</small><strong>{esc(backtest_state)}</strong><span>{esc(historical_note)}</span>{holding_note}{earnings_card}{entry_card}{freeze_card}</div></div>
-    <p class="muted">研究截至 {esc(research.get('as_of'))} · {esc(research.get('version'))}。{esc(research.get('method',''))}</p>
+    <p>当前观察名单 {len(stocks)} / {esc(research.get('target_count',20))} 只 · 研究截至 {esc(research.get('as_of'))}。研究对象不等于持仓数量。</p>
     <div class="filters"><label>搜索全部研究股票<input id="research-search" type="search" placeholder="公司、代码、行业或待核实问题"></label><span class="muted" id="research-count" aria-live="polite"></span></div>
     <p class="research-table-hint muted">表格可左右滑动，右侧查看研究依据与 K 线。</p><div class="table-scroll"><table id="research-table"><thead><tr><th>公司</th><th>估值</th><th>流动性</th><th>情景股息率</th><th>分红 / 综合状态</th><th>查看</th></tr></thead><tbody>{''.join(rows)}</tbody></table></div>
     <p id="research-empty" class="muted" hidden>没有匹配的研究对象。</p><div class="research-pagination"><button id="research-prev" type="button">上一页</button><span id="research-page" aria-live="polite"></span><button id="research-next" type="button">下一页</button></div>
-    {entry_note}{comparison_chart(backtest) if backtest else ''}{history}{coverage_panel(backtest.get('coverage',{}))}{diagnoses}{period_diagnostics_panel(backtest.get('period_diagnostics',{})) if backtest.get('status')!='blocked' else ''}<details class="research-results"><summary>历史实验指标与验证边界</summary><p>{esc(message)}</p>{earnings_note}{freeze_policy_note(protocol) if backtest else ''}{target_note}{comparisons}<ul>{notes}</ul><p class="muted">平均仓位指每天投资市值占总资产比例的平均值；现金也计入收益分母。单个区间超过 10% 不代表目标已验证；还需独立区间、交易成本、退市与数据时点检查。历史结果不能保证未来收益。</p></details></section>'''
+    {comparison_chart(backtest) if backtest else ''}{history}{coverage_panel(backtest.get('coverage',{}))}{diagnoses}{period_diagnostics_panel(backtest.get('period_diagnostics',{})) if backtest.get('status')!='blocked' else ''}<details class="research-results"><summary>策略规则、来源与完整指标</summary><p>研究目标：年化 ≥ 10%；待验证，不是收益承诺。{esc(backtest_state)} · {esc(historical_note)}</p><p>研究版本 {esc(research.get('version'))} · 历史版本 {esc(protocol.get('version'))}。{esc(research.get('method',''))}</p><p>{esc(message)}</p><p>{holding_note}{earnings_card} {entry_card} {freeze_card} {cash_card}</p>{entry_note}{earnings_note}{freeze_policy_note(protocol) if backtest else ''}{capital_policy_note(protocol,registered_protocol) if backtest else ''}{valuation_policy_note(protocol,registered_protocol) if backtest else ''}{exit_policy_note(protocol,registered_protocol) if backtest else ''}{rebalance_policy_note(protocol,registered_protocol) if backtest else ''}{approved_cash_note(protocol,diagnostics)}{cashflow_policy_note(protocol,diagnostics) if backtest else ''}{target_note}{comparisons}<ul>{notes}</ul><p class="muted">平均仓位指每天投资市值占总资产比例的平均值；现金也计入收益分母。单个区间超过 10% 不代表目标已验证；还需独立区间、交易成本、退市与数据时点检查。历史结果不能保证未来收益。</p></details></section>'''
 
 
 def automatic_panel(data):
@@ -534,6 +702,38 @@ def historical_chart_data(workspace):
     mode=summary.get('protocol',{}).get('entry_mode','yield_threshold')
     if mode not in ENTRY_MODES or latest['protocol'].get('entry_mode','yield_threshold')!=mode:
         return {}
+    dividend_policy=summary.get('protocol',{}).get('dividend_policy','implemented_only')
+    if dividend_policy not in ('implemented_only','approved_annual_cash') or latest['protocol'].get('dividend_policy','implemented_only')!=dividend_policy:
+        return {}
+    cashflow_policy=summary.get('protocol',{}).get('cashflow_policy','latest_and_three_year')
+    if cashflow_policy not in ('latest_and_three_year','three_year_coverage') or latest['protocol'].get('cashflow_policy','latest_and_three_year')!=cashflow_policy:
+        return {}
+    capital_policy=summary.get('protocol',{}).get('capital_policy','fixed_amount')
+    registered=record('protocol.json')
+    valuation_policy=summary.get('protocol',{}).get('valuation_policy','historical_gate')
+    exit_policy=summary.get('protocol',{}).get('exit_policy','review_freeze')
+    rebalance_policy=summary.get('protocol',{}).get('rebalance_policy','monthly_only')
+    if (rebalance_policy not in ('monthly_only','after_confirmed_sale')
+            or latest['protocol'].get('rebalance_policy','monthly_only')!=rebalance_policy
+            or registered and (registered.get('version')!=version or registered.get('rebalance_policy','monthly_only')!=rebalance_policy)
+            or rebalance_policy=='after_confirmed_sale' and not registered):
+        return {}
+    if (exit_policy not in ('review_freeze','known_failure_exit')
+            or latest['protocol'].get('exit_policy','review_freeze')!=exit_policy
+            or registered and (registered.get('version')!=version or registered.get('exit_policy','review_freeze')!=exit_policy)
+            or exit_policy=='known_failure_exit' and not registered):
+        return {}
+    if (valuation_policy not in ('historical_gate','historical_context')
+            or latest['protocol'].get('valuation_policy','historical_gate')!=valuation_policy
+            or registered and (registered.get('version')!=version or registered.get('valuation_policy','historical_gate')!=valuation_policy)
+            or valuation_policy=='historical_context' and not registered):
+        return {}
+    if (capital_policy not in ('fixed_amount','equity_ratio') or latest['protocol'].get('capital_policy','fixed_amount')!=capital_policy
+            or registered and (registered.get('version')!=version or registered.get('capital_policy','fixed_amount')!=capital_policy)):
+        return {}
+    ratios=capital_ratios(registered) if capital_policy=='equity_ratio' else None
+    if capital_policy=='equity_ratio' and ratios is None:
+        return {}
     coverage=summary.get('coverage',{})
     if not all(isinstance(coverage.get(key),str) and re.fullmatch(r'\d{8}',coverage[key]) for key in ('start','end')) or coverage['start']>coverage['end']:
         return {}
@@ -563,8 +763,26 @@ def historical_chart_data(workspace):
         if (result.get('start')!=coverage.get('start') or result.get('end')!=coverage.get('end')
                 or not isinstance(result.get('plans'),list) or not isinstance(result.get('trades'),list)):
             continue
+        assumptions=result.get('assumptions',{})
+        if (not isinstance(assumptions,dict) or assumptions.get('capital_policy','fixed_amount')!=capital_policy
+                or assumptions.get('rebalance_policy','monthly_only')!=rebalance_policy):
+            continue
+        if capital_policy=='equity_ratio':
+            try:
+                if (dec(result.get('initial_cash'),positive=True)!=money(registered['account_config']['paper_cash'])
+                        or any(not isinstance(assumptions.get(key),str) or dec(assumptions[key],positive=True)!=ratio
+                               for key,ratio in zip(('position_limit_ratio','sector_limit_ratio'),ratios))):
+                    continue
+            except AppError:
+                continue
+        elif any(key in assumptions for key in ('position_limit_ratio','sector_limit_ratio')):
+            continue
         runs.append({'id':rate,'label':display,
                      'plans':result['plans'],'fills':result['trades'],'stock_events':chart_stock_events(result.get('stock_events'))})
+        if dividend_policy=='approved_annual_cash':
+            runs[-1]['label']+=' · 已批准年度现金估计'
+        if rebalance_policy=='after_confirmed_sale':
+            runs[-1]['label']+=' · 卖出成交后一次补单'
     return {'version':version,'start':coverage.get('start'),'end':coverage.get('end'),'stocks':stocks,'names':names,'runs':runs,
             'dividend_notes':chart_dividend_notes(market.get('dividends',{}),coverage['end'])} if runs else {}
 
@@ -589,14 +807,14 @@ def chart_panel(workspace, report, automatic, research=None):
     if not codes and not historical:
         return ''
     options=''.join(f'<option value="{esc(s)}" {"selected" if s==preferred else ""}>{esc(s+" · "+names.get(s,s))}</option>' for s in codes)
-    sources='<option value="daily">日常模拟</option>'+''.join(f'<option value="{run["id"]}">{esc(run["label"])}</option>' for run in historical.get('runs',[]))
+    sources='<option value="daily">日常模拟</option>'+''.join(f'<option value="{run["id"]}">{esc("历史主方案" if run["id"]=="rank" else run["label"])}</option>' for run in historical.get('runs',[]))
     payload={'stocks':stocks,'names':names,'as_of':report.get('as_of'),'assessments':assessments,'plans':automatic.get('chart_plans',[]),'fills':automatic.get('chart_fills',[]),'stock_events':chart_stock_events(automatic.get('account',{}).get('stock_events')),'notes':automatic.get('notes',{}),'historical':historical}
     encoded=json.dumps(payload,ensure_ascii=False).replace('<','\\u003c').replace('>','\\u003e').replace('&','\\u0026')
     return f'''<section class="panel" id="chart-panel"><div class="section-title"><h2>股票 K 线与自动模拟操作</h2><span class="muted">红涨绿跌 · 未复权日线</span></div>
     <div class="filters" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr))"><label>来源<select id="chart-source" style="width:100%;max-width:none">{sources}</select></label><label>股票<select id="chart-symbol">{options}</select></label><label>显示范围<select id="chart-range" style="width:100%;max-width:none"><option value="30">近 30 根</option><option value="60" selected>近 60 根</option><option value="120">近 120 根</option><option value="10000">全部已取数据</option></select></label><label>定位成交 / 送转<select id="chart-trade" style="width:100%;max-width:none"><option value="">最近行情</option></select></label></div><p class="muted" id="chart-context"></p>
     <p class="chart-legend">○ 信：生成订单的信号日　<span class="buy">▲ 买：模拟买入成交</span>　<span class="sell">▼ 卖：模拟卖出成交</span>　<span style="color:#79549b">■ 转：送转新增股</span><span id="chart-reference-legend">　虚线：基准情景参考价（在显示范围内时）</span></p>
     <div id="stock-chart" class="stock-chart" tabindex="0" aria-label="股票日 K 线；使用左右方向键查看各日详情"></div><p id="chart-tip" class="chart-tip" aria-live="polite"></p>
-    <div id="chart-explanation" class="chart-explanation"></div><p class="muted">未复权便于核对成交原价，除权除息可能产生缺口；不把它解释为投资损失。图中只标所选来源的订单、成交及已记录送转；送转不是买入，不重复调整原始 K 线。尚无成交时没有买卖箭头。历史模式不套用今天的参考价，历史曾入池名单不等于当日观察名单。</p>
+    <div id="chart-explanation" class="chart-explanation"></div><details><summary>数据来源与图表说明</summary><p id="chart-provenance" class="muted"></p><p class="muted">未复权便于核对成交原价，除权除息可能产生缺口；不把它解释为投资损失。图中只标所选来源的订单、成交及已记录送转；送转不是买入，不重复调整原始 K 线。尚无成交时没有买卖箭头。历史模式不套用今天的参考价，历史曾入池名单不等于当日观察名单。</p></details>
     <script type="application/json" id="market-chart-data">{encoded}</script></section>'''
 
 
@@ -606,6 +824,9 @@ def render(workspace, ledger, report, status=None):
     demo = source == "DEMO"
     research=optional_report(workspace/'research'/'latest.json') if not demo else {}
     backtest=optional_report(workspace/'backtests'/'latest.json') if not demo else {}
+    version=backtest.get('protocol',{}).get('version','')
+    registered_protocol=(optional_report(workspace/'backtests'/version/'protocol.json')
+                         if isinstance(version,str) and re.fullmatch(r'historical-[a-z0-9]+(?:-[a-z0-9]+)*',version) else {})
     forecast=optional_report(workspace/'forecast-diagnostic.json') if not demo else {}
     charts=optional_report(workspace/'charts.json')
     chart_symbols={code for code,stock in charts.get('stocks',{}).items() if stock.get('candles') and not stock.get('error')} if charts.get('as_of')==report.get('as_of')==research.get('as_of') else set()
@@ -671,11 +892,12 @@ def render(workspace, ledger, report, status=None):
     benchmark_script = (ROOT/'qmt/benchmark-ui.js').read_text(encoding='utf-8')
     page = f'''<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>NKG · 红利研究工作台</title><style>{style}</style></head>
     <body><main><header><a class="brand" href="#">NKG<span> / DIVIDEND LAB</span></a><span class="local">● 本地研究 · 人工执行</span></header>
-    <section class="hero"><div><p class="eyebrow">RESEARCH FIRST, EXECUTION SECOND</p><h1>先看分红能否持续，<br>再等价格满足假设。</h1><p>从沪深主板寻找低估值、持续高股息与强流动性，保留反对证据与资料缺口。<br>研究、模拟、手动成交，分开记录。</p></div><div class="date-card"><small>行情截至</small><strong>{esc(report.get('as_of','尚未运行'))}</strong><span>{esc(source)} · 市场快照 {esc(report.get('pool_date','—'))}</span><span>生成于 {esc(report.get('generated_at','—'))}</span></div></section>
+    <section class="hero"><div><p class="eyebrow">DIVIDEND LAB</p><h1>红利策略研究</h1><p>查看历史表现，核对每笔操作。</p></div><div class="date-card"><small>行情截至</small><strong>{esc(report.get('as_of','尚未运行'))}</strong><span>{esc(source)} · 市场快照 {esc(report.get('pool_date','—'))}</span><span>生成于 {esc(report.get('generated_at','—'))}</span></div></section>
     <div class="notice {'error' if not status.get('ok') or demo else ''}">{'虚构演示数据，不可用于真实交易。 ' if demo else ''}{esc(status.get('message',''))}</div>
-    {research_panel(research,backtest,chart_symbols,experiment_history_panel(workspace) if not demo else '')}
-    {forecast_diagnostic_panel(forecast)}
+    {historical_overview(backtest)}
     {chart_panel(workspace,report,report.get('demo_operations',{}) if demo else automatic,research)}
+    {research_panel(research,backtest,chart_symbols,experiment_history_panel(workspace) if not demo else '',registered_protocol)}
+    {forecast_diagnostic_panel(forecast,backtest,registered_protocol)}
     {('<details class="panel account-fold"><summary>当日模拟账户与订单检查</summary>'+automatic_panel(automatic)+'</details>') if research and not demo else automatic_panel(automatic) if not demo else ''}
     <section class="metrics"><div><small>财报研究覆盖</small><strong>{report.get('covered',0)}<i> / {report.get('pool_size',0)}</i></strong><span>主板 {report.get('universe_count',0)} 家，财报批次不代表全市场</span></div><div><small>待核实 / 观察</small><strong>{sum(r['status'] in ('待核实','观察') for r in rows)}</strong><span>资料不齐时不生成价格结论</span></div><div><small>排除</small><strong>{sum(r['status']=='排除' for r in rows)}</strong><span>保留具体原因，避免只看成功案例</span></div><div><small>可进一步评估</small><strong>{sum(r['status']=='可进一步评估' for r in rows)}</strong><span>满足研究条件 ≠ 自动买入</span></div></section>
     <section class="panel"><div class="section-title"><h2>重点财报详情 · 当前展示 {len(details)} 只</h2><span class="muted">{'最多展示 5 只重点详情；完整研究池可在上方翻页' if research else '重点详情不代表持股上限；观察不等于买入'}</span></div><div class="filters"><label>在重点详情中查找<input id="search" type="search" placeholder="公司、代码或行业"></label><label>研究状态<select id="status"><option value="">全部状态</option><option>待核实</option><option>观察</option><option>排除</option><option>可进一步评估</option></select></label></div>
