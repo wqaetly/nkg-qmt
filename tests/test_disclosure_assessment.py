@@ -6,7 +6,7 @@ from qmt.automatic import assess, load_rules
 from qmt.experiment import entry_diagnostics
 from qmt.research import DISCLOSURES, summarize, verified_zero_cash_years
 from test_automatic import fixture
-from test_verified_disclosures import zero_item
+from test_verified_disclosures import source, zero_item
 
 
 class DisclosureAssessmentTests(unittest.TestCase):
@@ -138,6 +138,38 @@ class DisclosureAssessmentTests(unittest.TestCase):
                          'field': 'st_borr', 'label': '短期借款', 'available_on': '20261030'}])
         self.assertIn('短期借款（20260930）缺失，不能按零计算', result['reason'])
         self.assertIsNone(dossier['data']['balancesheet'][-1]['st_borr'])
+
+    def test_registered_debt_fields_are_rechecked_even_with_a_complete_summary(self):
+        _, dossier = fixture(symbol='600002.SH')
+        latest = dossier['data']['balancesheet'][-1]
+        latest.update(st_borr=None, non_cur_liab_due_1y=None)
+        entries = [{**source('20261030'), 'expected': copy.deepcopy(latest), 'field': field, 'value': '0'}
+                   for field in ('st_borr', 'non_cur_liab_due_1y')]
+        DISCLOSURES['financial_zero_fields'] = entries
+        original = copy.deepcopy(dossier)
+        row = self.summarize(dossier)
+        self.assertEqual(assess(row, dossier, self.rules)['state'], '满足价格条件')
+        self.assertEqual(dossier, original)
+        DISCLOSURES['financial_zero_fields'] = entries[:1]
+        missing = assess(row, dossier, self.rules)
+        self.assertEqual(missing['state'], '待数据核实')
+        self.assertEqual([gap['field'] for gap in missing['financial_gaps']], ['non_cur_liab_due_1y'])
+        DISCLOSURES['financial_zero_fields'] = entries
+        latest['money_cap'] += 1
+        self.assertEqual(assess(row, dossier, self.rules)['state'], '待数据核实')
+
+    def test_verified_debt_zero_does_not_clear_an_unregistered_cash_gap(self):
+        _, dossier = fixture(symbol='600002.SH')
+        latest = dossier['data']['balancesheet'][-1]
+        latest.update(st_borr=None, non_cur_liab_due_1y=None, money_cap=None)
+        DISCLOSURES['financial_zero_fields'] = [
+            {**source('20261030'), 'expected': copy.deepcopy(latest), 'field': field, 'value': '0'}
+            for field in ('st_borr', 'non_cur_liab_due_1y')]
+        row = self.summarize(dossier)
+        result = assess(row, dossier, self.rules)
+        self.assertEqual(result['state'], '待数据核实')
+        self.assertEqual([gap['field'] for gap in result['financial_gaps']], ['money_cap'])
+        self.assertTrue(all(latest[field] is None for field in ('st_borr', 'non_cur_liab_due_1y', 'money_cap')))
 
     def test_balance_gaps_remain_visible_when_fresh_summary_gate_is_false(self):
         labels = {'total_assets': '总资产', 'total_liab': '总负债', 'money_cap': '货币资金',

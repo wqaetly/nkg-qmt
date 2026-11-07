@@ -91,24 +91,29 @@ def _financial_zero_rows(rows, as_of):
         if available > as_of:
             continue
         proof = _verified_source(item)
-        if (item.get('field') != 'st_borr' or item.get('value') != '0'
-                or 'st_borr' not in expected or expected['st_borr'] is not None
+        field = item.get('field')
+        if (not isinstance(field, str) or field not in {'st_borr', 'non_cur_liab_due_1y'} or item.get('value') != '0'
+                or field not in expected or expected[field] is not None
                 or not expected.get('ts_code') or str(expected.get('report_type')) not in {'1', '4'}
                 or not date_key(expected.get('end_date')) <= disclosed_date(expected) <= available):
             raise AppError('已核实财务补零登记的字段、原始行或公告时点无效。')
         key = identity(expected)
-        if key in corrections:
+        registered, proofs = corrections.setdefault(key, (expected, {}))
+        if field in proofs:
             raise AppError('已核实财务补零登记重复。')
-        corrections[key] = (expected, {**proof, 'field': 'st_borr', 'value': '0',
-                                      'original': expected, 'note': item.get('note', '')})
+        if json.dumps(registered, sort_keys=True) != json.dumps(expected, sort_keys=True):
+            raise AppError('同一原始财报的补零登记不一致，须重新核对原文。')
+        proofs[field] = {**proof, 'field': field, 'value': '0',
+                         'original': expected, 'note': item.get('note', '')}
     result = []
     for row in visible:
         correction = corrections.get(identity(row)) if row in balance_rows else None
         if correction:
-            expected, proof = correction
+            expected, proofs = correction
             if json.dumps(row, sort_keys=True) != json.dumps(expected, sort_keys=True):
                 raise AppError('已核实财务补零的原始行已变化，须重新核对原文。')
-            row = {**row, 'st_borr': '0', 'verified_zero_fields': [json.loads(json.dumps(proof))]}
+            row = {**row, **{field: '0' for field in proofs},
+                   'verified_zero_fields': [json.loads(json.dumps(proofs[field])) for field in sorted(proofs)]}
         result.append(row)
     return result
 

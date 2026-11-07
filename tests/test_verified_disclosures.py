@@ -40,6 +40,14 @@ class VerifiedFinancialZeroTests(unittest.TestCase):
         self.registry.start()
         self.addCleanup(self.registry.stop)
 
+    def add_second_field(self, **changes):
+        self.item['expected']['non_cur_liab_due_1y'] = None
+        for row in self.rows:
+            row['non_cur_liab_due_1y'] = None
+        second = {**copy.deepcopy(self.item), 'field': 'non_cur_liab_due_1y', **changes}
+        DISCLOSURES['financial_zero_fields'].append(second)
+        return second
+
     def test_exact_row_duplicate_raw_and_available_date(self):
         self.rows *= 2
         before = copy.deepcopy(self.rows)
@@ -86,9 +94,62 @@ class VerifiedFinancialZeroTests(unittest.TestCase):
         duplicate['available_on'] = '20230901'
         self.assertEqual(statements(self.rows, '20230831')['20230630']['st_borr'], '0')
 
+    def test_two_fields_preserve_raw_and_have_order_independent_proofs(self):
+        self.add_second_field()
+        self.rows.append(copy.deepcopy(self.rows[0]))
+        original = copy.deepcopy(self.rows)
+        result = statements(self.rows, '20230831')
+        corrected = result['20230630']
+        self.assertEqual((corrected['st_borr'], corrected['non_cur_liab_due_1y']), ('0', '0'))
+        self.assertEqual(corrected['lt_borr'], 100.0)
+        proofs = corrected['verified_zero_fields']
+        self.assertEqual([p['field'] for p in proofs], ['non_cur_liab_due_1y', 'st_borr'])
+        self.assertTrue(all(p['original'] == original[0] for p in proofs))
+        DISCLOSURES['financial_zero_fields'].reverse()
+        self.assertEqual(result, statements(list(reversed(self.rows)), '20230831'))
+        self.assertEqual(self.rows, original)
+        proofs[0]['original']['money_cap'] = -1
+        self.assertEqual(proofs[1]['original']['money_cap'], 3000.0)
+        self.assertEqual(self.item['expected'], original[0])
+
+    def test_each_field_waits_for_its_own_source_and_future_duplicate(self):
+        second = self.add_second_field(available_on='20230901')
+        before = statements(self.rows, '20230831')['20230630']
+        self.assertEqual(before['st_borr'], '0')
+        self.assertIsNone(before['non_cur_liab_due_1y'])
+        self.assertEqual([p['field'] for p in before['verified_zero_fields']], ['st_borr'])
+        duplicate = {**copy.deepcopy(second), 'available_on': '20230902'}
+        DISCLOSURES['financial_zero_fields'].append(duplicate)
+        self.assertEqual(statements(self.rows, '20230901')['20230630']['non_cur_liab_due_1y'], '0')
+        with self.assertRaisesRegex(AppError, '登记重复'):
+            statements(self.rows, '20230902')
+
+    def test_distinct_fields_require_the_same_complete_original(self):
+        second = self.add_second_field()
+        original = copy.deepcopy(self.rows)
+        for changes in ({'money_cap': 3001.0}, {'lt_borr': 100}, {'extra': None}):
+            with self.subTest(changes=changes), patch.dict(second['expected'], changes):
+                with self.assertRaisesRegex(AppError, '补零登记不一致'):
+                    statements(self.rows, '20230831')
+                self.assertEqual(self.rows, original)
+
+    def test_new_field_requires_original_null_and_exact_raw(self):
+        second = self.add_second_field()
+        for value in (0, 1, '0'):
+            with self.subTest(value=value), patch.dict(second['expected'], {'non_cur_liab_due_1y': value}):
+                with self.assertRaisesRegex(AppError, '登记的字段'):
+                    statements(self.rows, '20230831')
+        del second['expected']['non_cur_liab_due_1y']
+        with self.assertRaisesRegex(AppError, '登记的字段'):
+            statements(self.rows, '20230831')
+        second['expected']['non_cur_liab_due_1y'] = None
+        changed = {**self.rows[0], 'non_cur_liab_due_1y': 0}
+        with self.assertRaisesRegex(AppError, '原始行已变化'):
+            statements([changed], '20230831')
+
     def test_invalid_registration_source_and_fields(self):
         for changes in ({'source': 'http://example.com/a'}, {'source': 'https://['}, {'source_sha256': 'broken'}, {'pages': ''},
-                        {'available_on': '20230830'}, {'field': 'lt_borr'}, {'value': 0}):
+                        {'available_on': '20230830'}, {'field': 'lt_borr'}, {'field': ['st_borr']}, {'value': 0}):
             with self.subTest(changes=changes), patch.dict(self.item, changes), self.assertRaises(AppError):
                 statements(self.rows, '20230901')
         with patch.dict(self.item['expected'], {'st_borr': 0}), self.assertRaises(AppError):
@@ -105,15 +166,23 @@ class VerifiedFinancialZeroTests(unittest.TestCase):
         _, dossier = fixture(day='20261105')
         latest = dossier['data']['balancesheet'][-1]
         latest['st_borr'] = None
+        latest['non_cur_liab_due_1y'] = None
         self.item.update({**source('20261030'), 'expected': copy.deepcopy(latest)})
+        second = {**copy.deepcopy(self.item), 'field': 'non_cur_liab_due_1y'}
+        DISCLOSURES['financial_zero_fields'].append(second)
         def summary():
             return summarize(dossier, {'name': '测试公司'},
                              {'trade_date': '20261105', 'close': '8', 'total_share': '.1'})
         first = summary()
         self.assertEqual(first['balance']['st_borr'], '0')
-        self.item['source_sha256'] = 'b' * 64
-        self.assertNotEqual(first['evidence_hash'], summary()['evidence_hash'])
+        self.assertEqual(first['balance']['non_cur_liab_due_1y'], '0')
+        DISCLOSURES['financial_zero_fields'].reverse()
+        self.assertEqual(first['evidence_hash'], summary()['evidence_hash'])
+        for item in (self.item, second):
+            with self.subTest(field=item['field']), patch.dict(item, {'source_sha256': 'b' * 64}):
+                self.assertNotEqual(first['evidence_hash'], summary()['evidence_hash'])
         self.assertIsNone(latest['st_borr'])
+        self.assertIsNone(latest['non_cur_liab_due_1y'])
 
 
 class VerifiedZeroCashYearTests(unittest.TestCase):
