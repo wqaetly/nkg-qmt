@@ -270,6 +270,45 @@ class ResearchUiTests(unittest.TestCase):
             self.assertNotIn('完整原始行不应直接展开',page)
             self.assertEqual(before,json.dumps(report,ensure_ascii=False,sort_keys=True))
         self.assertEqual(data_warnings_panel([]),'')
+        self.assertEqual(data_warnings_panel(None),'')
+
+    def test_mixed_unused_warnings_separate_roe_and_preserve_source_variants(self):
+        share={'api':'balancesheet','period':'20220930','ann_date':'20221028','field':'total_share','values':['100','101']}
+        roe={'api':'fina_indicator','period':'20221231','ann_date':'<script>公告</script>','field':'roe',
+             'values':['9.1','<img>'],'originals':[{'roe':'9.1','note':'原始来源变体'},{'roe':'9.2'}]}
+        warnings=[share,roe]
+        before=json.dumps(warnings,sort_keys=True)
+        page=data_warnings_panel(warnings)
+        shares,indicators=page.split('<div class="data-warnings">')[1:]
+        self.assertIn('该季度股数字段未参与本次数值计算',shares)
+        self.assertNotIn('fina_indicator.roe',shares)
+        self.assertIn('财务指标 ROE 冲突',indicators)
+        self.assertIn('未用于本策略计算',indicators)
+        self.assertIn('冲突值未知待核实',indicators)
+        self.assertIn('来源变体保留',indicators)
+        self.assertIn('9.1 / &lt;img&gt;',indicators)
+        self.assertIn('&lt;script&gt;公告&lt;/script&gt;',indicators)
+        self.assertNotIn('季度股数',indicators)
+        self.assertNotIn('<script>',page)
+        self.assertNotIn('<img>',page)
+        self.assertNotIn('原始来源变体',page)
+        self.assertEqual(before,json.dumps(warnings,sort_keys=True))
+        self.assertEqual(data_warnings_panel([roe]),'<div class="data-warnings">'+indicators)
+        expected='<div class="data-warnings"><p><strong>未参与计算的股数冲突 · 原文待核实</strong></p><ul><li class="analysis">报告期 20220930 · 公告日 20221028 · balancesheet.total_share<br>接口原始值：100 / 101</li></ul>\n    <p class="muted">该季度股数字段未参与本次数值计算；这里只记录接口差异，尚未核对原文。年报股数及其他字段冲突仍按阻断处理。</p></div>'
+        self.assertEqual(data_warnings_panel([share]),expected)
+        share.pop('api')
+        self.assertEqual(data_warnings_panel([share]),expected.replace('balancesheet.total_share','—.total_share'))
+
+    def test_unrecognized_warning_api_or_field_does_not_assume_share_or_roe(self):
+        for api,field in [('income','roe'),('fina_indicator','total_share'),('balancesheet','roe'),
+                          (None,'roe'),('<script>接口</script>','<img>')]:
+            with self.subTest(api=api,field=field):
+                page=data_warnings_panel([{'api':api,'field':field,'values':['<svg>']}])
+                self.assertIn('字段类型未识别，值未知待核实',page)
+                self.assertNotIn('季度股数',page)
+                self.assertNotIn('财务指标 ROE',page)
+                for tag in ('<script>','<img>','<svg>'):
+                    self.assertNotIn(tag,page)
 
     def test_dividend_cash_html_distinguishes_verified_shares_proxy_unknown_and_zero(self):
         verified={'end_date':'20251231','record_date':'20260615','ex_date':'20260616','cash_div_tax':'0.2',
@@ -343,6 +382,36 @@ class ResearchUiTests(unittest.TestCase):
         self.assertEqual(before,json.dumps(backtest,sort_keys=True))
         for diagnostics in ({'evaluations':80},{'unused_share_conflicts':[]}):
             self.assertNotIn('id="unused-share-conflicts"',research_panel(self.research(),{'diagnostics':diagnostics}))
+
+    def test_historical_share_and_indicator_conflicts_have_separate_labels_and_counts(self):
+        backtest={'diagnostics':{'unused_share_conflicts':[
+            {'symbol':'600001.SH','period':'20220930','field':'total_share','count':12,'active_count':9}]}}
+        legacy=research_panel(self.research(),backtest)
+        backtest['diagnostics']['unused_indicator_conflicts']=[]
+        self.assertEqual(research_panel(self.research(),backtest),legacy)
+        backtest['diagnostics']['unused_indicator_conflicts']=[
+            {'symbol':'600002.SH','period':'20221231','field':'roe','count':7,'active_count':0},
+            {'symbol':'<script>代码</script>','period':'<img>','field':'roe','count':1,'active_count':1}]
+        before=json.dumps(backtest,sort_keys=True)
+        page=research_panel(self.research(),backtest)
+        share=page.split('id="unused-share-conflicts"')[1].split('id="unused-indicator-conflicts"')[0]
+        indicator=page.split('id="unused-indicator-conflicts"')[1].split('</p></div>')[0]
+        self.assertIn('季度股数冲突',share)
+        self.assertNotIn('600002.SH',share)
+        self.assertIn('财务指标 ROE 冲突',indicator)
+        self.assertIn('600002.SH</td><td>20221231</td><td>roe</td><td>7</td><td>0',indicator)
+        self.assertIn('未用于本策略计算，冲突值未知待核实',indicator)
+        self.assertIn('来源变体保留',indicator)
+        self.assertNotIn('季度股数',indicator)
+        self.assertIn('&lt;script&gt;代码&lt;/script&gt;',indicator)
+        self.assertIn('&lt;img&gt;',indicator)
+        self.assertNotIn('<script>代码</script>',page)
+        self.assertNotIn('<img>',page)
+        self.assertEqual(before,json.dumps(backtest,sort_keys=True))
+        backtest['diagnostics'].pop('unused_share_conflicts')
+        page=research_panel(self.research(),backtest)
+        self.assertIn('id="unused-indicator-conflicts"',page)
+        self.assertNotIn('id="unused-share-conflicts"',page)
 
     def test_entry_funnel_displays_provided_counts_with_distinct_scope_and_units(self):
         stages=[('当期候选',940),('财务通过',589),('估值通过',208),('流动性通过',199),('基础候选通过',198),('全部买入条件通过',41)]

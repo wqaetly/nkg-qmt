@@ -85,6 +85,24 @@ class EntryDiagnosticsTests(unittest.TestCase):
             {'symbol':'601006.SH','period':'20250331','field':'total_share','count':1,'active_count':0}])
         self.assertEqual(result['entry_funnel'][-1]['count'],1)
 
+    def test_indicator_conflicts_keep_separate_scope_and_counts(self):
+        share={'api':'balancesheet','period':'20240930','field':'total_share'}
+        roe={'api':'fina_indicator','period':'20241231','field':'roe'}
+        active=assessment(symbol='600578.SH',data_warnings=[share,roe])
+        retired=assessment(symbol='600578.SH',active=False,data_warnings=[roe])
+        unrelated=assessment(symbol='600578.SH',data_warnings=[
+            {**roe,'api':'balancesheet'},{**share,'api':'fina_indicator'},
+            {**roe,'api':None},{**roe,'field':'profit_dedt'}])
+        audits=[{'assessments':[active,retired,unrelated]}]
+        original=copy.deepcopy(audits)
+        result=entry_diagnostics(audits,{})
+        self.assertEqual(result['unused_share_conflicts'],[
+            {'symbol':'600578.SH','period':'20240930','field':'total_share','count':1,'active_count':1}])
+        self.assertEqual(result['unused_indicator_conflicts'],[
+            {'symbol':'600578.SH','period':'20241231','field':'roe','count':2,'active_count':1}])
+        self.assertEqual(result['entry_funnel'][-1]['count'],2)
+        self.assertEqual(audits,original)
+
 
 if __name__ == '__main__':
     unittest.main()

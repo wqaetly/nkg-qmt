@@ -158,7 +158,7 @@ def verified_zero_cash_years(rows, symbol, as_of):
     return result
 
 
-def statements(rows, as_of, *, quarterly_share_conflicts=None):
+def statements(rows, as_of, *, quarterly_share_conflicts=None, indicator_roe_conflicts=None):
     versions = {}
     for row in _financial_zero_rows(rows, date_key(as_of)):
         if disclosed_date(row) > as_of or row.get("end_date", "99999999") > as_of:
@@ -190,6 +190,10 @@ def statements(rows, as_of, *, quarterly_share_conflicts=None):
             quarterly_share_conflicts.append({'api':'balancesheet','period':period,'ann_date':rank[0],
                 'field':'total_share','values':conflicts.pop('total_share'),
                 'originals':[dict(row) for row in candidates]})
+        # Indicator consumers use profit_dedt, not ROE; retain its conflicting evidence.
+        if indicator_roe_conflicts is not None and 'roe' in conflicts:
+            indicator_roe_conflicts.append({'api':'fina_indicator','period':period,'ann_date':rank[0],
+                'field':'roe','values':conflicts.pop('roe'),'originals':[dict(row) for row in candidates]})
         if conflicts:
             raise AppError(f"{period} 同期财报版本冲突（{', '.join(sorted(conflicts))}），需核对原文。")
         selected[period] = merged
@@ -571,7 +575,8 @@ def summarize(dossier, basic, quote):
         def checked(api):
             try:
                 return statements(dossier['data'].get(api,[]),as_of,
-                                  quarterly_share_conflicts=row['data_warnings'] if api=='balancesheet' else None)
+                                  quarterly_share_conflicts=row['data_warnings'] if api=='balancesheet' else None,
+                                  indicator_roe_conflicts=row['data_warnings'] if api=='fina_indicator' else None)
             except AppError as exc:
                 row['issues'].append(api+'：'+str(exc))
                 return {}

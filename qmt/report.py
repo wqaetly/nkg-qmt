@@ -203,9 +203,24 @@ def forecast_diagnostic_panel(data):
 def data_warnings_panel(warnings):
     if not warnings:
         return ''
-    items=''.join(f'<li class="analysis">报告期 {esc(item.get("period"))} · 公告日 {esc(item.get("ann_date"))} · {esc(item.get("api"))}.{esc(item.get("field"))}<br>接口原始值：{esc(" / ".join(str(value) for value in item.get("values",[])))}</li>' for item in warnings)
-    return f'''<div class="data-warnings"><p><strong>未参与计算的股数冲突 · 原文待核实</strong></p><ul>{items}</ul>
-    <p class="muted">该季度股数字段未参与本次数值计算；这里只记录接口差异，尚未核对原文。年报股数及其他字段冲突仍按阻断处理。</p></div>'''
+    groups={}
+    for item in warnings:
+        api,field=item.get('api'),item.get('field')
+        kind=('shares' if api in (None,'balancesheet') and field=='total_share' else
+              'roe' if api=='fina_indicator' and field=='roe' else 'unknown')
+        groups.setdefault(kind,[]).append(item)
+    blocking_fields='参与计算的其他字段' if 'roe' in groups else '其他字段'
+    labels={
+        'shares':('未参与计算的股数冲突',f'该季度股数字段未参与本次数值计算；这里只记录接口差异，尚未核对原文。年报股数及{blocking_fields}冲突仍按阻断处理。'),
+        'roe':('未参与计算的财务指标 ROE 冲突','该财务指标 ROE 未用于本策略计算；冲突值未知待核实，来源变体保留在研究数据中，尚未核对原文。'),
+        'unknown':('数据字段冲突','字段类型未识别，值未知待核实；这里只保留接口差异，不推断其是否参与策略计算。')}
+    panels=[]
+    for kind,group in groups.items():
+        title,note=labels[kind]
+        items=''.join(f'<li class="analysis">报告期 {esc(item.get("period"))} · 公告日 {esc(item.get("ann_date"))} · {esc(item.get("api"))}.{esc(item.get("field"))}<br>接口原始值：{esc(" / ".join(str(value) for value in item.get("values",[])))}</li>' for item in group)
+        panels.append(f'''<div class="data-warnings"><p><strong>{title} · 原文待核实</strong></p><ul>{items}</ul>
+    <p class="muted">{note}</p></div>''')
+    return ''.join(panels)
 
 
 def chart_stock_events(events):
@@ -412,12 +427,19 @@ def research_panel(research, backtest, chart_symbols=(), history=''):
         if months:
             funnel+=f'<p id="candidate-months" class="muted">月度评估 {esc(months.get("months"))} 次，其中 {esc(months.get("empty"))} 次无{"排序" if ranked else "买入"}候选；合格候选累计 {esc(months.get("total_candidates"))} 个公司·月。</p>'
         unused=diagnostics.get('unused_share_conflicts',[])
+        indicators=diagnostics.get('unused_indicator_conflicts',[])
         conflicts=''
         if unused:
             conflicts='<div id="unused-share-conflicts"><p><strong>未参与计算的季度股数冲突 · 原文待核实</strong></p>'+table(
                 ['公司','冲突报告期','字段','评估月次数','其中当期候选月次数'],
                 [[item.get(key) for key in ('symbol','period','field','count','active_count')] for item in unused])
-            conflicts+='<p class="muted">每行按公司、冲突报告期、评估月去重；同股不同报告期可分别计数，不能当作独立公司数或成交笔数。这些季度股数字段未参与本次数值计算，原文尚未核实；年报股数及其他字段冲突仍按阻断处理。</p></div>'
+            blocking_fields='参与计算的其他字段' if indicators else '其他字段'
+            conflicts+=f'<p class="muted">每行按公司、冲突报告期、评估月去重；同股不同报告期可分别计数，不能当作独立公司数或成交笔数。这些季度股数字段未参与本次数值计算，原文尚未核实；年报股数及{blocking_fields}冲突仍按阻断处理。</p></div>'
+        if indicators:
+            conflicts+='<div id="unused-indicator-conflicts"><p><strong>未参与计算的财务指标 ROE 冲突 · 原文待核实</strong></p>'+table(
+                ['公司','冲突报告期','字段','评估月次数','其中当期候选月次数'],
+                [[item.get(key) for key in ('symbol','period','field','count','active_count')] for item in indicators])
+            conflicts+='<p class="muted">每行按公司、冲突报告期、评估月去重；同股不同报告期可分别计数，不能当作独立公司数或成交笔数。该财务指标 ROE 未用于本策略计算，冲突值未知待核实；来源变体保留在研究数据中，原文尚未核实。</p></div>'
         rebalances=selection.get('rebalances',[])
         rejected=Counter(item.get('reason','未记录原因') for item in (selection.get('rejected',[]) if not rebalances else [item for pool in rebalances for item in pool.get('rejected',[])]))
         reason_rows=[['建池淘汰（公司 / 建池时点）' if rebalances else '建池淘汰（公司）',reason,count] for reason,count in rejected.most_common()]

@@ -60,7 +60,8 @@ def dividend_assessment(row, dossier, rules, *, earnings_basis='conservative_min
         return stop('待数据核实',reason)
     try:
         data, day = dossier['data'], row['as_of']
-        inc, indicators = [statements(data[key],day) for key in ('income','fina_indicator')]
+        inc, indicators = [statements(data[key],day,indicator_roe_conflicts=[] if key=='fina_indicator' else None)
+                           for key in ('income','fina_indicator')]
         annual = row['annual'][:5]
         year = int(annual[0]['period'][:4])
         if [x['period'] for x in annual] != [f'{year-i}1231' for i in range(5)]:
