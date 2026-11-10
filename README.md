@@ -70,6 +70,8 @@ python -X utf8 skills/watchlist-review/scripts/prepare_watchlist.py
 
 报告和研究包保存到被忽略的 `data/agent-research/YYYY-MM-DD/HHmmss/`。报告应包含信息截止时间、行情时间、证据来源、情景假设、条件性结论、反证和下次复核点。午盘重点解释相对早盘的变化。数据不足、Gemini 未完成或关键事实冲突时，明确标注待核实。
 
+持仓复核同时输出本地图形化网页 `report.html`、可追踪底稿 `report.json` 和 `report.md`。网页默认展示建议分组、同币种持仓/现金分布、财务比较与事件时间线，逐项证据可展开；可直接用浏览器打开，不需要部署网站。Agent 完成研究后按 [网页报告格式](skills/watchlist-review/references/web-report.md) 写入 JSON，再运行 `python -X utf8 skills/watchlist-review/scripts/render_report.py <report.json路径>`；渲染成功不等于研究完成。
+
 离线验证命令（仓库根目录）：
 
 ```powershell
