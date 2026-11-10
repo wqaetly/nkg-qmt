@@ -1,1 +1,1 @@
-"""Local research and paper trading. No broker connection or order submission."""
+"""Read-only market-data helpers for Agent-driven stock research."""

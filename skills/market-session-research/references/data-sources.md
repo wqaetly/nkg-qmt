@@ -35,7 +35,7 @@ Fuyao 认证为 HTTPS GET 的 `X-api-key` 请求头，固定目标主机 `fuyao.
 - `Tushare.calendar(start, end)`：日期为 `YYYYMMDD`，返回开市日期。盘中查询最近完整日需选择严格早于今天的最近开市日。
 - `Tushare.prices(as_of)`：`daily_basic`，是指定交易日的日频估值，**不是盘中报价**。
 - `Tushare.dossier(symbol, as_of, start_year=None)`：股票财务/分红/审计底稿；先读当前实现和参数。`as_of` 为信息截止日，不要为了配合日线日期而遗漏今天已发布的公告。
-- `qmt.config.now_cn()`、`atomic_json(path, value)` 可用于时间和结果落盘。不要调用 `qmt.service` 的旧日常交易流程；其盘后语义不适配本 skill。
+- `qmt.config.now_cn()`、`atomic_json(path, value)` 可用于时间和结果落盘。`qmt/` 仅提供只读数据助手，研究编排由本 skill 完成。
 
 `dossier` 会把各子接口失败放入 `errors`，返回对象不代表所有子项成功。其分红请求未按截止日过滤，其他财报日期检查也不保证盘中可知性：消费数据时另查公告/实施/修订时间，剔除晚于截止时间的内容；只有日期而无发布时间时，不能断言当天盘中已经可知。默认财务历史较长，可按研究需要显式缩短 `start_year`。最近完整交易日仍可能尚未发布数据；应标出实际取得的最近日期和缺口，不能把空日频表当作全市场没有候选。
 

@@ -6,11 +6,32 @@ from decimal import Decimal
 from pathlib import Path
 from unittest.mock import patch
 
-from qmt.config import AppError
+from qmt.config import AppError, date_key, dec
 from qmt.market import PageLimitError, Tushare, year_ranges
 
 
 CODE = '600001.SH'
+
+
+class MarketBoundaryTests(unittest.TestCase):
+    def test_invalid_numeric_and_date(self):
+        for value in ('NaN', 'Infinity', '-1', None):
+            with self.assertRaises(AppError):
+                dec(value)
+        with self.assertRaises(AppError):
+            date_key('20260230')
+
+    def test_api_error_never_echoes_upstream_secret(self):
+        with patch.dict('os.environ', {'TUSHARE_TOKEN': 'fake'}), patch('qmt.market.request_json', return_value={'code': -1, 'msg': 'SECRET'}):
+            with self.assertRaises(AppError) as caught:
+                Tushare().call('daily', {}, 'ts_code')
+            self.assertNotIn('SECRET', str(caught.exception))
+
+    def test_api_schema_failure(self):
+        response = {'code': 0, 'data': {'fields': ['ts_code'], 'items': [['a', 'b']]}}
+        with patch.dict('os.environ', {'TUSHARE_TOKEN': 'fake'}), patch('qmt.market.request_json', return_value=response):
+            with self.assertRaises(AppError):
+                Tushare().call('daily', {}, 'ts_code')
 
 
 class MarketHistoryTests(unittest.TestCase):

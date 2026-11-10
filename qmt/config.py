@@ -1,10 +1,8 @@
 import json
 import os
-import re
 import tempfile
-from contextlib import contextmanager
 from datetime import datetime, timezone, timedelta
-from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
+from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -39,10 +37,6 @@ def dec(value, *, positive=False):
         raise AppError("金额/价格必须是有效的非负数，价格必须大于零。") from None
 
 
-def money(value):
-    return dec(value).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-
-
 def load_env():
     path = ROOT / ".env"
     if path.exists():
@@ -50,29 +44,6 @@ def load_env():
             if line.strip() and not line.lstrip().startswith("#") and "=" in line:
                 key, value = line.split("=", 1)
                 os.environ.setdefault(key.strip(), value.strip().strip("\"'"))
-
-
-def load_config():
-    cfg = json.loads((ROOT / "config.json").read_text(encoding="utf-8-sig"))
-    if cfg["index_code"] != "000922.CSI":
-        raise AppError("首版候选池为中证红利 000922.CSI。")
-    for key, low, high in (("review_max_age_days", 1, 90), ("slippage_bps", 0, 1000)):
-        if type(cfg[key]) is not int or not low <= cfg[key] <= high:
-            raise AppError(f"配置 {key} 超出范围。")
-    for key in ("paper_cash", "paper_max_position", "paper_max_sector", "commission_rate", "minimum_commission", "sell_stamp_rate"):
-        dec(cfg[key], positive=key.startswith("paper_"))
-    if dec(cfg["commission_rate"]) > Decimal("0.01"):
-        raise AppError("佣金率异常，请以小数形式填写。")
-    for value in cfg["required_yields"]:
-        if not 0 < dec(value) <= 1:
-            raise AppError("情景股息率必须使用 0 到 1 的小数。")
-    return cfg
-
-
-def symbol_key(value):
-    if not isinstance(value, str) or not re.fullmatch(r"\d{6}\.(SH|SZ|BJ)", value):
-        raise AppError("代码必须为六位数字加 .SH、.SZ 或 .BJ。")
-    return value
 
 
 def atomic_json(path, value):
@@ -85,31 +56,3 @@ def atomic_json(path, value):
         temporary.replace(path)
     finally:
         temporary.unlink(missing_ok=True)
-
-
-@contextmanager
-def workspace_lock(workspace):
-    workspace.mkdir(parents=True,exist_ok=True)
-    with (workspace/'.run.lock').open('a+b') as stream:
-        stream.seek(0,2)
-        if not stream.tell():
-            stream.write(b'0')
-            stream.flush()
-        stream.seek(0)
-        try:
-            if os.name=='nt':
-                import msvcrt
-                msvcrt.locking(stream.fileno(),msvcrt.LK_NBLCK,1)
-            else:
-                import fcntl
-                fcntl.flock(stream.fileno(),fcntl.LOCK_EX|fcntl.LOCK_NB)
-        except OSError:
-            raise AppError('此数据目录已有任务运行；本次跳过以避免重复订单。') from None
-        try:
-            yield
-        finally:
-            stream.seek(0)
-            if os.name=='nt':
-                msvcrt.locking(stream.fileno(),msvcrt.LK_UNLCK,1)
-            else:
-                fcntl.flock(stream.fileno(),fcntl.LOCK_UN)

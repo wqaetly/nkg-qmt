@@ -6,7 +6,7 @@
 - 合并版本：`1cd5475314fefdcedb9fcf7bcc4c3fe4fd1f8e41`，2026-11-10 核验为其 main 最新提交。
 - 导入该版本全部文件，包括技能、方法说明、计算脚本、测试、MIT 许可证及原始来源说明；以文件快照纳入本库，原仓库 Git 历史仍留在源仓库。
 - 本库调整：增加与早午盘研究技能的协作说明、Tushare HTTP/Fuyao 接入路径，取消固定 MCP 元数据依赖，修正合并后的安装路径。计算脚本与测试未改动。
-- `vendor/dividend_stock_research` 是旧回测使用的冻结副本；保留原路径和内容以维持导入兼容与实验代码指纹。新的技能维护以 `skills/dividend-stock-research` 为入口，不反向改写已封存实验。
+- 技能维护以 `skills/dividend-stock-research` 为入口；本库已移除旧回测、模拟交易和重复的 `vendor/` 副本，仅保留 Agent 研究与算术校验。
 
 ## 原始来源
 

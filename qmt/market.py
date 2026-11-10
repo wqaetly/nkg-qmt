@@ -2,13 +2,12 @@ import json
 import os
 import hashlib
 import time
-from datetime import datetime, timedelta
-from decimal import Decimal
+from datetime import datetime
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlparse
 from urllib.request import Request, build_opener, HTTPRedirectHandler
 
-from .config import AppError, date_key, dec, atomic_json, now_cn, symbol_key
+from .config import AppError, date_key, dec, atomic_json, now_cn
 
 
 # Tushare docs 27/32/183/103/79: a full page may be truncated, even from cache.
@@ -37,7 +36,7 @@ class NoRedirect(HTTPRedirectHandler):
 def request_json(url, payload=None, headers=None, timeout=25):
     parsed = urlparse(url)
     if parsed.scheme != "https" or not parsed.hostname or parsed.username or parsed.password:
-        raise AppError("数据与模型接口必须使用不含账户凭据的 HTTPS 地址。")
+        raise AppError("数据接口必须使用不含账户凭据的 HTTPS 地址。")
     request = Request(url, data=None if payload is None else json.dumps(payload).encode(),
                       headers={"Content-Type": "application/json", "User-Agent": "nkg-qmt/0.1", **(headers or {})})
     try:
@@ -123,23 +122,6 @@ class Tushare:
             raise AppError("交易日历字段异常。")
         return sorted(row["cal_date"] for row in rows if row["is_open"] == 1)
 
-    def pool(self, as_of):
-        start = (datetime.strptime(as_of, "%Y%m%d") - timedelta(days=100)).strftime("%Y%m%d")
-        rows = self.call("index_weight", {"index_code": "000922.CSI", "start_date": start, "end_date": as_of},
-                         "index_code,con_code,trade_date,weight")
-        if not rows:
-            raise AppError("未取得中证红利成分数据，不能用固定股票名单替代。")
-        if any(row["index_code"] != "000922.CSI" or date_key(row["trade_date"]) > as_of for row in rows):
-            raise AppError("指数成分代码或日期异常。")
-        day = max(row["trade_date"] for row in rows)
-        members = [row for row in rows if row["trade_date"] == day]
-        if len(members) != 100 or len({row["con_code"] for row in members}) != 100:
-            raise AppError("中证红利成分不足或不止 100 只，请核对接口快照。")
-        if (datetime.strptime(as_of, "%Y%m%d") - datetime.strptime(day, "%Y%m%d")).days > 45:
-            raise AppError("最新成分权重快照超过 45 天，暂停初筛。")
-        if not Decimal("99") <= sum(dec(row["weight"]) for row in members) <= Decimal("101"):
-            raise AppError("指数权重合计异常。")
-        return day, sorted(symbol_key(row["con_code"]) for row in members)
 
     def basics(self):
         rows = self.call("stock_basic", {"list_status": "L"}, "ts_code,name,industry,market,list_date")
