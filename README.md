@@ -1,4 +1,39 @@
-# NKG 红利研究工作台
+# NKG AI 量化研究库
+
+把结构化市场数据、AI 深度研究、可复算的估值方法和历史实验放在同一仓库。当前主流程是 **Tushare/Fuyao 取数与筛选 → Gemini 网页 Deep Research → Codex 核验与研究判断 → 人工操作**，以数月至更久的中长期持有为主。
+
+| 入口 | 用途 |
+| --- | --- |
+| [market-session-research](skills/market-session-research/SKILL.md) | 早午盘选股、ETF 比较、持仓复核与研究变化跟踪；默认北京时间约 10:00、14:00 出报告 |
+| [dividend-stock-research](skills/dividend-stock-research/SKILL.md) | 业务与分红可持续性、现金流及债务核验、多情景股息参考价 |
+| [qmt/](qmt/) | 已有 Tushare HTTP 数据读取、机械规则研究、模拟账本和历史回测 |
+| [原红利工作台使用说明](#红利工作台与历史实验) | 既有命令、历史实验记录和验证边界 |
+
+`dividend-stock-research` 已从 [独立仓库](https://github.com/wqaetly/dividend-stock-research) 完整导入，来源版本、调整与 MIT 许可见 [来源记录](skills/dividend-stock-research/UPSTREAM.md)。研究技能位于 `skills/`；历史实验的 `vendor/` 副本保持冻结，以保留代码指纹和现有调用路径。仓库地址继续使用 `nkg-qmt`。
+
+## 安装研究技能
+
+在仓库根目录运行以下 PowerShell 命令，将两项技能安装到个人技能目录（已有同名目录时先保留个人修改，再手动更新）：
+
+```powershell
+$skillRoot = if ($env:CODEX_HOME) { Join-Path $env:CODEX_HOME 'skills' } else { Join-Path $env:USERPROFILE '.codex/skills' }
+New-Item -ItemType Directory -Path $skillRoot -Force | Out-Null
+Copy-Item -LiteralPath .\skills\market-session-research -Destination $skillRoot -Recurse
+Copy-Item -LiteralPath .\skills\dividend-stock-research -Destination $skillRoot -Recurse
+```
+
+可直接让 Codex 读取仓库内的 `SKILL.md` 使用；安装后也可用技能名称调用：
+
+```text
+使用 $market-session-research，做今天的早盘研究，中长期持有，给出值得继续研究的候选与反对证据。
+使用 $dividend-stock-research，核查指定公司的分红可持续性，并比较悲观、基准、乐观情景。
+```
+
+Tushare 使用 `TUSHARE_TOKEN`；Fuyao 使用 `FUYAO_API_KEY`，可放在被忽略的本地 `.env`，由 `qmt.config.load_env()` 加载。安装技能不会配置密钥、开通数据权限或设置定时任务。Gemini 需要连接用户指定、已登录的 Chrome 配置；全程使用浏览器直连。数据接口和字段差异见 [接入说明](skills/market-session-research/references/data-sources.md)。
+
+早午盘是报告频率，不是交易频率。Codex 对 Gemini 的关键结论查原始来源并复算，允许“今天无需操作”。研究报告和原始数据写入被忽略的 `data/agent-research/`；密钥、个人持仓、私人聊天及报告不提交到 Git。当前技能通过结构校验，尚未完成新的一次全链路研究验证；网页登录、额度和研究耗时会影响报告交付。报告时间不会自动创建定时任务。
+
+## 红利工作台与历史实验
 
 从**沪深主板**筛选低估值、可持续高股息、流动性强的公司，不要求属于中证红利指数，核查财报与分红，按悲观/基准/较好情景比较税前股息率参考价；每天自动完成机械规则评估、虚拟仓位分配、订单及次日模拟成交；中信 APP 手动成交仍使用独立账本。
 

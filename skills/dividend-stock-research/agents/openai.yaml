@@ -1,0 +1,4 @@
+interface:
+  display_name: "红利选股研究"
+  short_description: "核查分红与现金流，以多情景股息率筛选候选并推算参考买价"
+  default_prompt: "使用 $dividend-stock-research，通过已配置的 Tushare MCP、项目 HTTP 接口或用户指定数据源获取分红与财报，联网核验原始公告，列出风险与多情景参考买价。"

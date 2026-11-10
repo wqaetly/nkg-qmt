@@ -1,5 +1,7 @@
 # 来源与口径
 
+2026-11-10：将 `dividend-stock-research` 的同一版本完整纳入 `skills/dividend-stock-research/`，增加 `skills/market-session-research/` 统一编排 Tushare/Fuyao、Gemini 网页研究及 Codex 复核。完整导入范围和本库适配见 [技能来源记录](skills/dividend-stock-research/UPSTREAM.md)。下述 `vendor/` 路径继续作为旧研究与回测的冻结依赖，内容和历史实验指纹不变。
+
 研究方法及情景计算来自 https://github.com/wqaetly/dividend-stock-research ，参考提交
 `1cd5475314fefdcedb9fcf7bcc4c3fe4fd1f8e41`，访问日期 2026-11-06。
 MIT 许可保存在 `vendor/dividend_stock_research/LICENSE`。
